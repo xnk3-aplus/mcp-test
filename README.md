@@ -1,16 +1,12 @@
 # MCP Demo Server
 
-A Python-based Model Context Protocol (MCP) server demonstrating tool functionality with beautiful HTML UI using FastMCP.
+A simple Python-based Model Context Protocol (MCP) server demonstrating basic tool functionality with FastMCP.
 
 ## Features
 
-This MCP server includes an interactive dice rolling tool with a professional UI:
+This MCP server includes a simple dice rolling tool:
 
-- **`roll_dice(sides)`** - Roll a dice with a specified number of sides (default: 6) and get a beautifully formatted HTML page with:
-  - Large dice emoji display (for 6-sided dice)
-  - Result highlighted in a clean, modern interface
-  - Detailed information about the roll
-  - FastMCP-styled UI components
+- **`roll_dice(sides)`** - Roll a dice with a specified number of sides (default: 6)
 
 ## Prerequisites
 
