@@ -813,6 +813,13 @@ class DataProcessor:
                 print(f"Warning: Error processing checkin {checkin.get('id', 'Unknown')}: {e}")
                 continue
 
+        if not checkin_list:
+            return pd.DataFrame(columns=[
+                'checkin_id', 'checkin_name', 'checkin_since', 'checkin_since_timestamp',
+                'cong_viec_tiep_theo', 'checkin_target_name', 'checkin_kr_current_value',
+                'kr_id', 'checkin_user_id', 'next_action_score'
+            ])
+
         return pd.DataFrame(checkin_list)
 
     @staticmethod
@@ -1029,6 +1036,10 @@ class OKRAnalysisSystem:
             print("No goals or KRs data found")
         # Merge Goals and KRs
         merged_df = pd.merge(goals_df, krs_df, on='goal_id', how='left', suffixes=('_goal', '_kr'))
+        
+        # Ensure kr_id exists (user request: leave empty if no KR)
+        if 'kr_id' not in merged_df.columns:
+            merged_df['kr_id'] = None
         
         # Map user names using ALL users in system
         all_users_df = self.api_client.get_account_users()

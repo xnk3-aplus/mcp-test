@@ -237,34 +237,31 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
         goals, krs = get_goals_and_krs(cycle_path, ctx)
         user_names = get_user_names()
         
+        if not goals and not krs:
+             return [{"error": "No Goals or KRs found in cycle"}]
+
         # 2. Build Maps
         goal_map = {str(g['id']): g for g in goals}
         user_map = user_names
         
         # 3. Join Data
-        # Base is KRs (as they hold the metrics) joined with Goals
-        # But request is "rows" which usually implies checkin granularity if checkin columns are present
-        # If the user wants a list of CHECKINS with goal/kr info:
-        # The requested columns include 'checkin_id', 'checkin_name' etc. So it is checkin-granularity.
-        
-        # Prepare Rows
         full_data = []
-        
-        # We iterate through CHECKINS as the base granularity
-        # But we also need rows for Goals/KRs that have NO checkins?
-        # unique_rows usually implies left join Goal+KR -> Checkin.
-        
-        # Let's organize by Goal -> KR -> Checkins
         
         # Helper to get safe string
         def safe_get(d, k, default=''):
             return str(d.get(k, default)) if d.get(k) is not None else default
 
-        # Process all KRs
+        # Process all KRs (safe iteration)
+        if not krs:
+            # Handle case with goals but no KRs if necessary, but typically Goals have KRs
+            pass
+
         for kr in krs:
             kr_id = str(kr.get('id', ''))
+            # Safety: if no KR ID, skip or generate placeholder? goal.py skips or errors. We skip.
+            if not kr_id: continue
+
             goal_id = str(kr.get('goal_id', ''))
-            
             goal = goal_map.get(goal_id, {})
             
             # Common Goal/KR data
@@ -284,8 +281,8 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
                 'kr_since': kr.get('since', ''),
                 'kr_current_value': kr.get('current_value', 0),
                 'goal_user_name': user_map.get(goal_user_id, f"User_{goal_user_id}"),
-                'goal_username': '', # Not readily available in standalone without full user profile fetch
-                'list_goal_id': '', # Placeholder
+                'goal_username': '', 
+                'list_goal_id': '',
                 # Target placeholders
                 'target_id': '', 'target_company_id': '', 'target_company_name': '',
                 'target_name': '', 'target_scope': '', 'target_dept_id': '',
@@ -296,18 +293,24 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
             kr_checkins = [c for c in checkins if str(c.get('obj_export', {}).get('id', '')) == kr_id]
             
             if not kr_checkins:
-                # Add row with empty checkin info
+                # Add row with empty checkin info - Logic matches goal.py "no checkin" row
                 row = base_row.copy()
+                # Explicitly set checkin fields to empty/default
+                row.update({
+                    'checkin_id': '', 'checkin_name': '', 'checkin_since': '',
+                    'checkin_since_timestamp': '', 'cong_viec_tiep_theo': '',
+                    'checkin_target_name': '', 'checkin_kr_current_value': 0, 'checkin_user_id': ''
+                })
                 full_data.append(row)
             else:
                 for c in kr_checkins:
                     row = base_row.copy()
                     row.update({
                         'checkin_id': str(c.get('id', '')),
-                        'checkin_name': c.get('name', ''), # Often implied
+                        'checkin_name': c.get('name', ''),
                         'checkin_since': c.get('since', ''),
-                        'checkin_since_timestamp': c.get('since', ''), # Same as since usually
-                        'cong_viec_tiep_theo': c.get('next_action', ''), # Map next_action to this
+                        'checkin_since_timestamp': c.get('since', ''),
+                        'cong_viec_tiep_theo': c.get('form', [{}])[0].get('value', '') if c.get('form') else '', # Better extraction
                         'checkin_target_name': '', 
                         'checkin_kr_current_value': c.get('current_value', 0),
                         'checkin_user_id': str(c.get('user_id', ''))

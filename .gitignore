@@ -8,6 +8,9 @@ venv/
 .venv/
 env/
 
+# Data
+goal_data.csv
+
 # IDEs
 .vscode/
 .idea/
