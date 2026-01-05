@@ -155,6 +155,8 @@ def _calculate_shifts_logic(ctx: Optional[Context] = None) -> dict:
         last_month_end = last_month_end.replace(hour=23, minute=59, second=59)
         
         user_okr_data = {}
+        user_has_activity = {} # Track if user has ANY check-ins
+
         for kr in krs:
             uid = str(kr.get('user_id', ''))
             if not uid: continue
@@ -162,12 +164,21 @@ def _calculate_shifts_logic(ctx: Optional[Context] = None) -> dict:
             
             if name not in user_okr_data:
                 user_okr_data[name] = {'current': [], 'last': []}
+                user_has_activity[name] = False
             
             user_okr_data[name]['current'].append(kr.get('current_value', 0))
             
             kr_id = str(kr.get('id', ''))
+            
+            # Find checkins for this specific KR
+            kr_checkins = [x for x in checkins if str(x.get('obj_export', {}).get('id', '')) == kr_id]
+            
+            # If there are ANY checkins for this KR (regardless of date), mark user as active
+            if kr_checkins:
+                user_has_activity[name] = True
+
             valid_checkins = []
-            for c in [x for x in checkins if str(x.get('obj_export', {}).get('id', '')) == kr_id]:
+            for c in kr_checkins:
                 try:
                     t = datetime.fromtimestamp(int(c.get('since', 0)))
                     if t <= last_month_end:
@@ -186,9 +197,18 @@ def _calculate_shifts_logic(ctx: Optional[Context] = None) -> dict:
             cur = sum(d['current']) / len(d['current'])
             last = sum(d['last']) / len(d['last']) if d['last'] else 0
             
+            # DEFAULT SHIFT TO 0 IF NO ACTIVITY OR FIRST MONTH OF QUARTER
+            current_month = datetime.now().month
+            is_first_month_of_quarter = current_month in [1, 4, 7, 10]
+            
+            if not user_has_activity.get(name, False) or is_first_month_of_quarter:
+                shift = 0.0
+            else:
+                shift = round(cur - last, 2)
+            
             results.append({
                 'user_name': name,
-                'monthly_shift': round(cur - last, 2),
+                'monthly_shift': shift,
                 'current_value': round(cur, 2),
                 'last_month_value': round(last, 2),
                 'kr_count': len(d['current']),
