@@ -5,6 +5,8 @@ A powerful Model Context Protocol (MCP) server for analyzing OKR (Objectives and
 ## ✨ Features
 
 - **📉 Monthly OKR Shift Analysis**: Calculates movement of OKRs compared to the end of the previous month.
+- **🌳 Visual Tree**: Generates hierarchical OKR trees with clear visualization.
+- **📝 Form Data Extraction**: Automatically extracts custom fields (e.g., Priority, Contribution) from Targets.
 - **🤖 AI Ready**: Designed for integration with ChatGPT via MCP.
 
 ## 🛠️ Prerequisites
@@ -89,7 +91,8 @@ ngrok http 8000
 | Tool | Description | Auto-Run |
 |------|-------------|----------|
 | `get_monthly_okr_shifts` | Calculates current vs last month values for all users. | ✅ Yes |
-| `get_full_okr_data` | Returns the detailed dataset (like CSV) as JSON list. | ✅ Yes |
+| `get_full_okr_data` | Returns the detailed dataset (like CSV) as JSON list. Now includes Form Fields! 📝 | ✅ Yes |
+| `get_okr_tree` | Returns a hierarchical visualization of the OKR tree (ASCII/Visual Nodes). 🌳 | ✅ Yes |
 
 ## 📄 License
 MIT License
