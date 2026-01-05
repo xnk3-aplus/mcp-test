@@ -1,5 +1,5 @@
 import argparse
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from mcp_ui_server import create_ui_resource
 from mcp_ui_server.core import UIResource
 
