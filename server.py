@@ -113,4 +113,16 @@ def show_interactive_demo() -> list[UIResource]:
     return [ui_resource]
 
 if __name__ == "__main__":
-    mcp.run(transport="http", port=8000)
+    parser = argparse.ArgumentParser(description="My MCP Server")
+    parser.add_argument("--http", action="store_true", help="Use HTTP transport instead of stdio")
+    parser.add_argument("--port", type=int, default=3000, help="Port for HTTP transport (default: 3000)")
+    args = parser.parse_args()
+
+    if args.http:
+        print("🚀 Starting MCP server on HTTP (SSE transport)")
+        print("📡 Server will use SSE transport settings")
+        mcp.settings.port = args.port
+        mcp.run(transport="sse")
+    else:
+        print("🚀 Starting MCP server with stdio transport")
+        mcp.run()
