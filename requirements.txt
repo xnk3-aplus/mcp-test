@@ -1,3 +1,6 @@
 mcp 
 mcp-ui-server
 fastmcp
+pandas
+requests
+python-dotenv

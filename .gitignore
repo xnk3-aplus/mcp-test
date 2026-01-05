@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+venv/
+.venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+
+# Specific Helper MDs (Exclude all MDs except README)
+*.md
+!README.md

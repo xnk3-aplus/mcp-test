@@ -1,92 +1,96 @@
-# MCP Demo Server
+# OKR Analysis MCP Server 🚀
 
-A simple Python-based Model Context Protocol (MCP) server demonstrating basic tool functionality with FastMCP.
+A powerful Model Context Protocol (MCP) server for analyzing OKR (Objectives and Key Results) data. Built with `fastmcp`, this server allows AI assistants like ChatGPT to access, analyze, and report on your organization's OKR progress.
 
-## Features
+## ✨ Features
 
-This MCP server includes a simple dice rolling tool:
+- **📉 Monthly OKR Shift Analysis**: Calculates movement of OKRs compared to the end of the previous month.
+- **📁 Data Export**: Generates `goal_data.csv` instantly and returns it as a downloadable file.
+- **🤖 AI Ready**: Designed for integration with ChatGPT via MCP.
 
-- **`roll_dice(sides)`** - Roll a dice with a specified number of sides (default: 6)
+## 🛠️ Prerequisites
 
-## Prerequisites
+- Python 3.10+
+- [ngrok](https://ngrok.com/) (For manual deployment)
+- Base.vn API Tokens (`GOAL_ACCESS_TOKEN`, `ACCOUNT_ACCESS_TOKEN`)
 
-- Python 3.8+
-- pip
-- [ngrok](https://ngrok.com/) (for public internet access)
+## 📦 Local Installation
 
-## Installation
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/xnk3-aplus/mcp-test.git
+   cd mcp-test
+   ```
 
-1. Clone this repository:
-```bash
-git clone https://github.com/xnk3-aplus/mcp-test.git
-cd mcp-test
-```
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-2. Install required dependencies:
-```bash
-pip install fastmcp
-```
+3. **Configure Environment:**
+   Create a `.env` file in the root directory:
+   ```env
+   GOAL_ACCESS_TOKEN=your_goal_token_here
+   ACCOUNT_ACCESS_TOKEN=your_account_token_here
+   ```
 
-## Running the Server
+## 🚀 Deployment Options
 
-### Local Development
+You can deploy this server in two ways:
+1. **☁️ FastMCP Cloud** (Recommended for easiest hosting)
+2. **🔌 ChatGPT via Ngrok** (Manual local tunnel)
 
-To run the server locally on port 8000:
+---
 
+### Option 1: FastMCP Cloud ☁️
+*The fastest way to deploy your server securely.*
+
+1. **Push to GitHub**: Ensure your code is in a GitHub repository.
+2. **Go to [fastmcp.cloud](https://fastmcp.cloud)** and log in with GitHub.
+3. **Create Project**:
+   - Select your repository.
+   - Entrypoint: `server.py:mcp`
+   - **Environment Variables**: Add your `GOAL_ACCESS_TOKEN` and `ACCOUNT_ACCESS_TOKEN` in the dashboard.
+4. **Deploy**: Click Deploy. You get a secure URL (e.g., `https://okr-server.fastmcp.app/mcp`).
+5. **Connect**: Use this URL in your MCP client (e.g., ChatGPT, Cursor).
+
+---
+
+### Option 2: ChatGPT via Ngrok 🔌
+*For local development or direct connection to ChatGPT.*
+
+#### 1. Start Local Server
 ```bash
 python server.py
 ```
+*Runs on `http://localhost:8000`*
 
-The server will start at `http://localhost:8000`
-
-### Making Your Server Publicly Accessible
-
-Your server must be accessible from the internet for external integrations. For development, use ngrok:
-
-**Terminal 1** - Start the MCP server:
-```bash
-python server.py
-```
-
-**Terminal 2** - Expose via ngrok:
+#### 2. Expose via Ngrok
 ```bash
 ngrok http 8000
 ```
+*Copy your public https URL (e.g., `https://abc-123.ngrok-free.app`).*
 
-**Important:** Note your public URL (e.g., `https://abc123.ngrok.io`) for connecting to the server.
+#### 3. Connect to ChatGPT
+1. **Enable Developer Mode**:
+   - Go to **ChatGPT Settings** → **Connectors** → **Advanced** → Enable **Developer Mode**.
+2. **Create Connector**:
+   - Click **Create** (top right).
+   - **Name**: `OKR Analysis Server`
+   - **Server URL**: Paste your ngrok URL (`https://abc-123.ngrok-free.app/mcp/`).
+   - Click **Create** and **Trust**.
+3. **Use in Chat**:
+   - New Chat → Click **+** → **More** → **Developer Mode**.
+   - Toggle **OKR Analysis Server** ON.
 
-## Using the Server
+---
 
-Once your server is running, you can call the `roll_dice` tool through any MCP-compatible client:
+## 📝 API Reference
 
-```python
-# Example: Roll a standard 6-sided dice
-roll_dice()
+| Tool | Description | Auto-Run |
+|------|-------------|----------|
+| `get_monthly_okr_shifts` | Calculates current vs last month values for all users. | ✅ Yes |
+| `get_goal_data_csv` | Generates and returns a downloadable CSV file. | ✅ Yes |
 
-# Example: Roll a 20-sided dice
-roll_dice(sides=20)
-```
-
-## API Endpoint
-
-The MCP server exposes its interface at:
-```
-POST /mcp/
-```
-
-## Tech Stack
-
-- **FastMCP** - Fast MCP server implementation
-- **Python 3** - Runtime environment
-
-## Project Structure
-
-```
-mcp-test/
-├── server.py          # Main MCP server with dice rolling tool
-└── README.md          # This file
-```
-
-## License
-
-MIT License - Feel free to use and modify as needed.
+## 📄 License
+MIT License
