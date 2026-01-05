@@ -269,6 +269,22 @@ def parse_targets_logic(cycle_path: str, ctx: Optional[Context] = None) -> pd.Da
         # 2. Iterate ALL targets to find relevant ones (including detached Dept/Team targets)
         collected_targets = []
         
+        # Helper to extract form data
+        def extract_form_data(target_obj):
+            # strict columns requested by user
+            form_data = {
+                "Mức độ đóng góp vào mục tiêu công ty": "",
+                "Mức độ ưu tiên mục tiêu của Quý": "",
+                "Tính khó/tầm ảnh hưởng đến hệ thống": ""
+            }
+            if 'form' in target_obj and isinstance(target_obj['form'], list):
+                for item in target_obj['form']:
+                    key = item.get('name')
+                    val = item.get('value')
+                    if key:
+                        form_data[key] = val
+            return form_data
+
         for t in raw_targets:
             t_id = str(t.get('id', ''))
             scope = t.get('scope', '')
@@ -286,6 +302,8 @@ def parse_targets_logic(cycle_path: str, ctx: Optional[Context] = None) -> pd.Da
                     'target_dept_id': None, 'target_dept_name': None,
                     'target_team_id': None, 'target_team_name': None
                 }
+                # Merge form data
+                target_data.update(extract_form_data(t))
                 collected_targets.append(target_data)
 
             # Case B: Company Target (inspect its cached_objs)
@@ -301,6 +319,8 @@ def parse_targets_logic(cycle_path: str, ctx: Optional[Context] = None) -> pd.Da
                             'target_dept_id': None, 'target_dept_name': None,
                             'target_team_id': None, 'target_team_name': None
                         }
+                        # Merge form data from the sub-object (kr)
+                        sub_data.update(extract_form_data(kr))
                         collected_targets.append(sub_data)
 
         # 3. Post-process: Fill columns and fetch sub-goals
@@ -422,8 +442,19 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
                 'target_dept_name': t_info.get('target_dept_name', ''),
                 'target_team_id': t_info.get('target_team_id', ''),
                 'target_team_name': t_info.get('target_team_name', ''),
-                'list_goal_id': t_info.get('list_goal_id', []) # Now included
+                'list_goal_id': t_info.get('list_goal_id', [])
             }
+            
+            # Add dynamic form fields from target
+            # Exclude known standard keys to avoid overwriting base fields (though likely safe)
+            standard_keys = [
+                'target_id', 'target_company_id', 'target_company_name', 'target_name', 
+                'target_scope', 'target_dept_id', 'target_dept_name', 'target_team_id', 
+                'target_team_name', 'list_goal_id'
+            ]
+            for k, v in t_info.items():
+                if k not in standard_keys:
+                    base_row[k] = v
             
             # Find checkins for this KR
             kr_checkins = [c for c in checkins if str(c.get('obj_export', {}).get('id', '')) == kr_id]

@@ -91,7 +91,7 @@ ngrok http 8000
 | Tool | Description | Auto-Run |
 |------|-------------|----------|
 | `get_monthly_okr_shifts` | Calculates current vs last month values for all users. | ✅ Yes |
-| `get_full_okr_data` | Returns the detailed dataset (like CSV) as JSON list. Now includes Form Fields! 📝 | ✅ Yes |
+| `get_full_okr_data` | Returns detailed dataset as JSON. Standardized columns: `Mức độ đóng góp`, `Mức độ ưu tiên`, `Tính khó`. | ✅ Yes |
 | `get_okr_tree` | Returns a hierarchical visualization of the OKR tree (ASCII/Visual Nodes). 🌳 | ✅ Yes |
 
 ## 📄 License
