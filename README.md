@@ -5,7 +5,6 @@ A powerful Model Context Protocol (MCP) server for analyzing OKR (Objectives and
 ## ✨ Features
 
 - **📉 Monthly OKR Shift Analysis**: Calculates movement of OKRs compared to the end of the previous month.
-- **📁 Data Export**: Generates `goal_data.csv` instantly and returns it as a downloadable file.
 - **🤖 AI Ready**: Designed for integration with ChatGPT via MCP.
 
 ## 🛠️ Prerequisites
@@ -90,7 +89,6 @@ ngrok http 8000
 | Tool | Description | Auto-Run |
 |------|-------------|----------|
 | `get_monthly_okr_shifts` | Calculates current vs last month values for all users. | ✅ Yes |
-| `get_goal_data_csv` | Generates and returns a downloadable CSV file. | ✅ Yes |
 
 ## 📄 License
 MIT License

@@ -1,5 +1,5 @@
 from fastmcp import FastMCP, Context
-from fastmcp.utilities.types import File
+
 from typing import Dict, List, Optional
 import os
 import requests
@@ -212,28 +212,7 @@ def get_monthly_okr_shifts(ctx: Context) -> dict:
     return _calculate_shifts_logic(ctx)
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
-def get_goal_data_csv(ctx: Context) -> File:
-    """
-    Generate and display goal_data.csv containing monthly OKR shifts.
-    """
-    try:
-        data = _calculate_shifts_logic(ctx)
-        
-        if "error" in data:
-            df = pd.DataFrame([{"error": data["error"]}])
-        else:
-            df = pd.DataFrame(data["data"])
-            
-        csv_path = "goal_data.csv"
-        df.to_csv(csv_path, index=False, encoding='utf-8-sig')
-        
-        # Return File resource - FastMCP will handle base64 encoding and embedding
-        return File(path=csv_path)
-    except Exception as e:
-        df = pd.DataFrame([{"error": str(e)}])
-        df.to_csv("goal_data.csv", index=False)
-        return File(path="goal_data.csv")
+
 
 if __name__ == "__main__":
     mcp.run(transport="http", port=8000)
