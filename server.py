@@ -4,7 +4,8 @@ from typing import Dict, List, Optional
 import os
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import pytz
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -247,9 +248,20 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
         # 3. Join Data
         full_data = []
         
+
         # Helper to get safe string
         def safe_get(d, k, default=''):
             return str(d.get(k, default)) if d.get(k) is not None else default
+
+        # Helper for timestamp conversion
+        def convert_time(ts):
+            if not ts: return ''
+            try:
+                dt_utc = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+                tz_hcm = pytz.timezone('Asia/Ho_Chi_Minh')
+                return dt_utc.astimezone(tz_hcm).strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                return ''
 
         # Process all KRs (safe iteration)
         if not krs:
@@ -271,14 +283,14 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
                 'goal_id': goal_id,
                 'goal_name': goal.get('name', ''),
                 'goal_content': goal.get('content', ''),
-                'goal_since': goal.get('since', ''),
+                'goal_since': convert_time(goal.get('since')),
                 'goal_current_value': goal.get('current_value', 0),
                 'goal_user_id': goal_user_id,
                 'goal_target_id': str(goal.get('target_id', '')),
                 'kr_id': kr_id,
                 'kr_name': kr.get('name', ''),
                 'kr_content': kr.get('content', ''),
-                'kr_since': kr.get('since', ''),
+                'kr_since': convert_time(kr.get('since')),
                 'kr_current_value': kr.get('current_value', 0),
                 'goal_user_name': user_map.get(goal_user_id, f"User_{goal_user_id}"),
                 'goal_username': '', 
@@ -305,11 +317,12 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
             else:
                 for c in kr_checkins:
                     row = base_row.copy()
+                    checkin_ts = c.get('since', '')
                     row.update({
                         'checkin_id': str(c.get('id', '')),
                         'checkin_name': c.get('name', ''),
-                        'checkin_since': c.get('since', ''),
-                        'checkin_since_timestamp': c.get('since', ''),
+                        'checkin_since': convert_time(checkin_ts),
+                        'checkin_since_timestamp': checkin_ts,
                         'cong_viec_tiep_theo': c.get('form', [{}])[0].get('value', '') if c.get('form') else '', # Better extraction
                         'checkin_target_name': '', 
                         'checkin_kr_current_value': c.get('current_value', 0),
@@ -334,6 +347,112 @@ def get_full_okr_data(ctx: Context) -> List[Dict]:
     return _get_full_data_logic(ctx)
 
 
+
+
+
+def _get_tree_logic(ctx: Optional[Context] = None) -> Dict:
+    """Build hierarchical OKR tree"""
+    try:
+        if ctx: ctx.info("Building OKR tree...")
+        cycles = get_cycle_list()
+        if not cycles: return {"error": "No OKR cycles found"}
+        cycle_path = cycles[0]['path']
+        
+        # 1. Fetch Hierarchy (Targets)
+        url = "https://goal.base.vn/extapi/v1/cycle/get.full"
+        data = {'access_token': GOAL_ACCESS_TOKEN, 'path': cycle_path}
+        res = requests.post(url, data=data, timeout=30)
+        if res.status_code != 200: return {"error": "Failed to fetch cycle data"}
+        
+        cycle_data = res.json()
+        raw_company_targets = cycle_data.get('targets', [])
+        
+        # 2. Fetch User Goals & KRs
+        goals, krs = get_goals_and_krs(cycle_path, ctx)
+        
+        # 3. Build lookup maps
+        # Map: KR ID -> List of User Goals (User Goals link to a 'Target ID' which is actually a Dept/Team KR ID)
+        goals_by_target = {}
+        for g in goals:
+            tid = str(g.get('target_id', ''))
+            if tid:
+                if tid not in goals_by_target: goals_by_target[tid] = []
+                goals_by_target[tid].append(g)
+                
+        krs_by_goal = {}
+        for k in krs:
+            gid = str(k.get('goal_id', ''))
+            if gid:
+                if gid not in krs_by_goal: krs_by_goal[gid] = []
+                krs_by_goal[gid].append(k)
+
+        # 4. Construct Tree
+        tree = {}
+        
+        for co_target in raw_company_targets:
+            c_name = co_target.get('name', 'Unnamed Company Target')
+            
+            # Sub-targets (Dept/Team targets) are in 'cached_objs'
+            dept_team_targets = {}
+            
+            for dt_target in co_target.get('cached_objs', []):
+                dt_id = str(dt_target.get('id', ''))
+                dt_name = dt_target.get('name', '')
+                dt_type = dt_target.get('scope', 'dept') # dept or team or other
+                
+                # Fetch aligned User Goals
+                aligned_goals = goals_by_target.get(dt_id, [])
+                
+                goals_dict = {}
+                for g in aligned_goals:
+                    g_id = str(g.get('id', ''))
+                    g_name = g.get('name', '')
+                    
+                    # Fetch KRs for this goal
+                    g_krs = krs_by_goal.get(g_id, [])
+                    krs_dict = {}
+                    for k in g_krs:
+                        k_id = str(k.get('id', ''))
+                        krs_dict[k_id] = {
+                            'name': k.get('name', ''),
+                            'value': k.get('current_value', 0),
+                            'top_value': k.get('goal', 0),
+                            'unit': k.get('unit', '')
+                        }
+                        
+                    goals_dict[g_id] = {
+                        'name': g_name,
+                        'krs': krs_dict
+                    }
+                    
+                # Add to dept/team structure
+                if dt_type not in dept_team_targets:
+                     dept_team_targets[dt_type] = {}
+                
+                dept_team_targets[dt_type][dt_name] = { # Key by name as requested
+                    'name': dt_name,
+                    'goals': goals_dict
+                }
+
+            tree[c_name] = {
+                'name': c_name,
+                'target_dept_or_team': dept_team_targets
+            }
+            
+        return tree
+
+    except Exception as e:
+        if ctx: ctx.error(f"Error building tree: {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def get_okr_tree(ctx: Context) -> Dict:
+    """
+    Get the hierarchical OKR tree structure.
+    Returns: Company Target -> Dept/Team Target -> User Goal -> KRs.
+    """
+    return _get_tree_logic(ctx)
 
 
 if __name__ == "__main__":
