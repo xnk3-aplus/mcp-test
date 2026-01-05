@@ -1,2 +1,3 @@
 mcp 
 mcp-ui-server
+fastmcp
