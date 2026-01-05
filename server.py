@@ -425,19 +425,22 @@ def _get_tree_logic(ctx: Optional[Context] = None) -> Dict:
                         'krs': krs_dict
                     }
                     
-                # Add to dept/team structure
-                if dt_type not in dept_team_targets:
-                     dept_team_targets[dt_type] = {}
-                
-                dept_team_targets[dt_type][dt_name] = { # Key by name as requested
-                    'name': dt_name,
-                    'goals': goals_dict
-                }
+                # Add to dept/team structure ONLY if there are goals (Active Branch)
+                if goals_dict:
+                    if dt_type not in dept_team_targets:
+                         dept_team_targets[dt_type] = {}
+                    
+                    dept_team_targets[dt_type][dt_name] = { 
+                        'name': dt_name,
+                        'goals': goals_dict
+                    }
 
-            tree[c_name] = {
-                'name': c_name,
-                'target_dept_or_team': dept_team_targets
-            }
+            # Only add Company Target if it has active Dept/Team targets
+            if dept_team_targets:
+                tree[c_name] = {
+                    'name': c_name,
+                    'target_dept_or_team': dept_team_targets
+                }
             
         return tree
 
