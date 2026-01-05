@@ -1,15 +1,12 @@
-# MCP UI Server Demo
+# MCP Demo Server
 
-A Python-based Model Context Protocol (MCP) server demonstrating UI resource capabilities using `mcp-ui-server`. This server provides multiple interactive tools that return rich HTML interfaces.
+A simple Python-based Model Context Protocol (MCP) server demonstrating basic tool functionality with FastMCP.
 
 ## Features
 
-This MCP server includes four demonstration tools:
+This MCP server includes a simple dice rolling tool:
 
-- **`greet()`** - Simple greeting with styled HTML
-- **`show_dashboard()`** - Sample dashboard displaying server metrics
-- **`show_external_site()`** - Embeds external websites via iframe
-- **`show_interactive_demo()`** - Interactive UI with JavaScript intent messaging
+- **`roll_dice(sides)`** - Roll a dice with a specified number of sides (default: 6)
 
 ## Prerequisites
 
@@ -21,13 +18,13 @@ This MCP server includes four demonstration tools:
 
 1. Clone this repository:
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/xnk3-aplus/mcp-test.git
 cd mcp-test
 ```
 
 2. Install required dependencies:
 ```bash
-pip install fastmcp mcp-ui-server
+pip install fastmcp
 ```
 
 ## Running the Server
@@ -56,16 +53,19 @@ python server.py
 ngrok http 8000
 ```
 
-**Important:** Note your public URL (e.g., `https://abc123.ngrok.io`) for the next steps.
+**Important:** Note your public URL (e.g., `https://abc123.ngrok.io`) for connecting to the server.
 
-## Using the Tools
+## Using the Server
 
-Once your server is running, you can call the available tools through any MCP-compatible client:
+Once your server is running, you can call the `roll_dice` tool through any MCP-compatible client:
 
-- **greet** - Returns a simple welcome message
-- **show_dashboard** - Displays server metrics in a grid layout
-- **show_external_site** - Shows example.com in an iframe
-- **show_interactive_demo** - Includes clickable buttons that send intents
+```python
+# Example: Roll a standard 6-sided dice
+roll_dice()
+
+# Example: Roll a 20-sided dice
+roll_dice(sides=20)
+```
 
 ## API Endpoint
 
@@ -77,14 +77,13 @@ POST /mcp/
 ## Tech Stack
 
 - **FastMCP** - Fast MCP server implementation
-- **mcp-ui-server** - UI resource creation utilities
 - **Python 3** - Runtime environment
 
 ## Project Structure
 
 ```
 mcp-test/
-├── server.py          # Main MCP server with UI tools
+├── server.py          # Main MCP server with dice rolling tool
 └── README.md          # This file
 ```
 
