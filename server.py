@@ -6,7 +6,7 @@ from mcp_ui_server.core import UIResource
 # Create FastMCP instance
 mcp = FastMCP("my-mcp-server")
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def greet() -> list[UIResource]:
     """A simple greeting tool that returns a UI resource."""
     ui_resource = create_ui_resource({
@@ -24,7 +24,7 @@ def greet() -> list[UIResource]:
     })
     return [ui_resource]
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def show_dashboard() -> list[UIResource]:
     """Display a sample dashboard with metrics."""
     dashboard_html = """
@@ -53,7 +53,7 @@ def show_dashboard() -> list[UIResource]:
     })
     return [ui_resource]
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def show_external_site() -> list[UIResource]:
     """Display an external website in an iframe."""
     ui_resource = create_ui_resource({
@@ -66,7 +66,7 @@ def show_external_site() -> list[UIResource]:
     })
     return [ui_resource]
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def show_interactive_demo() -> list[UIResource]:
     """Show an interactive demo with buttons that send intents."""
     interactive_html = """
@@ -113,16 +113,4 @@ def show_interactive_demo() -> list[UIResource]:
     return [ui_resource]
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="My MCP Server")
-    parser.add_argument("--http", action="store_true", help="Use HTTP transport instead of stdio")
-    parser.add_argument("--port", type=int, default=3000, help="Port for HTTP transport (default: 3000)")
-    args = parser.parse_args()
-
-    if args.http:
-        print("🚀 Starting MCP server on HTTP (SSE transport)")
-        print("📡 Server will use SSE transport settings")
-        mcp.settings.port = args.port
-        mcp.run(transport="sse")
-    else:
-        print("🚀 Starting MCP server with stdio transport")
-        mcp.run()
+    mcp.run(transport="http", port=8000)
