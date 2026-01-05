@@ -212,6 +212,18 @@ def get_monthly_okr_shifts(ctx: Context) -> dict:
     return _calculate_shifts_logic(ctx)
 
 
+@mcp.tool(annotations={"readOnlyHint": True})
+def get_full_okr_data(ctx: Context) -> List[Dict]:
+    """
+    Get the full monthly OKR data dataset (equivalent to the CSV export).
+    Returns a list of records containing user names, values, shifts, and metadata.
+    """
+    result = _calculate_shifts_logic(ctx)
+    if "error" in result:
+        return [{"error": result["error"]}]
+    return result.get("data", [])
+
+
 
 
 if __name__ == "__main__":

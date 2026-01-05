@@ -89,6 +89,7 @@ ngrok http 8000
 | Tool | Description | Auto-Run |
 |------|-------------|----------|
 | `get_monthly_okr_shifts` | Calculates current vs last month values for all users. | ✅ Yes |
+| `get_full_okr_data` | Returns the detailed dataset (like CSV) as JSON list. | ✅ Yes |
 
 ## 📄 License
 MIT License
