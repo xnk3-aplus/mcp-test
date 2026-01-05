@@ -615,42 +615,71 @@ class GoalAPIClient:
             return pd.DataFrame()
         
         all_targets = []
+        raw_targets = response_data.get('targets', [])
         
-        # Iterate over each main "Objective" (Company Target)
-        for objective in response_data.get('targets', []):
-            objective_id = objective.get('id')
-            objective_name = objective.get('name')
+        # 1. Map Company Targets (Top Level scope='company')
+        company_targets_map = {}
+        for t in raw_targets:
+            if t.get('scope') == 'company':
+                company_targets_map[str(t.get('id', ''))] = {
+                    'id': str(t.get('id', '')),
+                    'name': t.get('name', '')
+                }
+        
+        # 2. Iterate ALL targets to find relevant ones (including detached Dept/Team targets)
+        # We will collect valid targets first
+        collected_targets = []
+        
+        for t in raw_targets:
+            t_id = str(t.get('id', ''))
+            scope = t.get('scope', '')
+            parent_id = str(t.get('parent_id') or '')
             
-            # Ensure the objective has Key Results (cached_objs)
-            if 'cached_objs' in objective and isinstance(objective['cached_objs'], list):
-                # Iterate over each "Key Result" (sub-target)
-                for kr in objective['cached_objs']:
-                    target_data = {
-                        'target_id': str(kr.get('id', '')),
-                        'target_company_id': str(objective_id) if objective_id else '',
-                        'target_company_name': objective_name if objective_name else '',
-                        'target_name': kr.get('name', ''),
-                        'target_scope': kr.get('scope', ''),
-                        'target_dept_id': None,
-                        'target_dept_name': None,
-                        'target_team_id': None,
-                        'target_team_name': None
-                    }
-                    
-                    # Điền dữ liệu cho cột dept/team dựa trên scope
-                    if target_data['target_scope'] == 'dept':
-                        target_data['target_dept_id'] = target_data['target_id']
-                        target_data['target_dept_name'] = target_data['target_name']
-                    elif target_data['target_scope'] == 'team':
-                        target_data['target_team_id'] = target_data['target_id']
-                        target_data['target_team_name'] = target_data['target_name']
-                    
-                    # Fetch sub-goal IDs
-                    # Note: This will significantly slow down the process
-                    print(f"  Fetching sub-goals for target: {target_data['target_name']}...", end='\r')
-                    target_data['list_goal_id'] = self.get_target_sub_goal_ids(target_data['target_id'])
-                    
-                    all_targets.append(target_data)
+            # Case A: Detached Dept/Team Target linked to Company Parent
+            if scope in ['dept', 'team'] and parent_id in company_targets_map:
+                parent = company_targets_map[parent_id]
+                target_data = {
+                    'target_id': t_id,
+                    'target_company_id': parent['id'],
+                    'target_company_name': parent['name'],
+                    'target_name': t.get('name', ''),
+                    'target_scope': scope,
+                    'target_dept_id': None, 'target_dept_name': None,
+                    'target_team_id': None, 'target_team_name': None
+                }
+                collected_targets.append(target_data)
+
+            # Case B: Company Target (inspect its cached_objs as before)
+            elif scope == 'company':
+                # Process cached_objs
+                if 'cached_objs' in t and isinstance(t['cached_objs'], list):
+                    for kr in t['cached_objs']:
+                        sub_data = {
+                            'target_id': str(kr.get('id', '')),
+                            'target_company_id': t_id,
+                            'target_company_name': t.get('name', ''),
+                            'target_name': kr.get('name', ''),
+                            'target_scope': kr.get('scope', ''),
+                            'target_dept_id': None, 'target_dept_name': None,
+                            'target_team_id': None, 'target_team_name': None
+                        }
+                        collected_targets.append(sub_data)
+
+        # 3. Post-process: Fill columns and fetch sub-goals
+        for target_data in collected_targets:
+            # Fill specific columns based on scope
+            if target_data['target_scope'] == 'dept':
+                target_data['target_dept_id'] = target_data['target_id']
+                target_data['target_dept_name'] = target_data['target_name']
+            elif target_data['target_scope'] == 'team':
+                target_data['target_team_id'] = target_data['target_id']
+                target_data['target_team_name'] = target_data['target_name']
+            
+            # Fetch sub-goal IDs (Original logic preserved)
+            print(f"  Fetching sub-goals for target: {target_data['target_name']}...", end='\r')
+            target_data['list_goal_id'] = self.get_target_sub_goal_ids(target_data['target_id'])
+            
+            all_targets.append(target_data)
         
         print("\nFinished fetching all targets.")
         return pd.DataFrame(all_targets)

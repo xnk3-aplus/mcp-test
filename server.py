@@ -219,9 +219,113 @@ def get_targets_data(cycle_path: str, ctx: Optional[Context] = None) -> List[Dic
     # We will try to fetch targets related to KRs if possible, or just skip if too complex for standalone
     # Based on goal.py, it constructs target_df. For standalone, we might skip deep target hierarchy join if not essential,
     # but user requested target columns.
-    # We'll return empty list for now if strict target structure is needed, or try to implementation basic fetch if possible.
+    # We will return empty list for now if strict target structure is needed, or try to implementation basic fetch if possible.
     # Given standalone constraints, we will leave target columns as None/Empty for now unless we implement full target scanning.
     return []
+
+def get_target_sub_goal_ids(target_id: str) -> List[str]:
+    """Fetch sub-goal IDs for a specific target"""
+    url = "https://goal.base.vn/extapi/v1/target/get"
+    data = {'access_token': GOAL_ACCESS_TOKEN, 'id': str(target_id)}
+    
+    try:
+        response = requests.post(url, data=data, timeout=30)
+        if response.status_code == 200:
+            response_data = response.json()
+            if response_data and 'target' in response_data and response_data['target']:
+                cached_objs = response_data['target'].get('cached_objs', [])
+                if isinstance(cached_objs, list):
+                    return [str(item.get('id')) for item in cached_objs if 'id' in item]
+        return []
+    except Exception as e:
+        print(f"Error fetching sub-goal {target_id}: {e}")
+        return []
+
+def parse_targets_logic(cycle_path: str, ctx: Optional[Context] = None) -> pd.DataFrame:
+    """Parse targets data from API to create target mapping with robust logic"""
+    url = "https://goal.base.vn/extapi/v1/cycle/get.full"
+    data = {'access_token': GOAL_ACCESS_TOKEN, 'path': cycle_path}
+
+    try:
+        if ctx: ctx.info("Fetching targets data...")
+        response = requests.post(url, data=data, timeout=30)
+        response_data = response.json()
+        
+        if not response_data or 'targets' not in response_data:
+            return pd.DataFrame()
+        
+        all_targets = []
+        raw_targets = response_data.get('targets', [])
+        
+        # 1. Map Company Targets (Top Level scope='company')
+        company_targets_map = {}
+        for t in raw_targets:
+            if t.get('scope') == 'company':
+                company_targets_map[str(t.get('id', ''))] = {
+                    'id': str(t.get('id', '')),
+                    'name': t.get('name', '')
+                }
+        
+        # 2. Iterate ALL targets to find relevant ones (including detached Dept/Team targets)
+        collected_targets = []
+        
+        for t in raw_targets:
+            t_id = str(t.get('id', ''))
+            scope = t.get('scope', '')
+            parent_id = str(t.get('parent_id') or '')
+            
+            # Case A: Detached Dept/Team Target linked to Company Parent
+            if scope in ['dept', 'team'] and parent_id in company_targets_map:
+                parent = company_targets_map[parent_id]
+                target_data = {
+                    'target_id': t_id,
+                    'target_company_id': parent['id'],
+                    'target_company_name': parent['name'],
+                    'target_name': t.get('name', ''),
+                    'target_scope': scope,
+                    'target_dept_id': None, 'target_dept_name': None,
+                    'target_team_id': None, 'target_team_name': None
+                }
+                collected_targets.append(target_data)
+
+            # Case B: Company Target (inspect its cached_objs)
+            elif scope == 'company':
+                if 'cached_objs' in t and isinstance(t['cached_objs'], list):
+                    for kr in t['cached_objs']:
+                        sub_data = {
+                            'target_id': str(kr.get('id', '')),
+                            'target_company_id': t_id,
+                            'target_company_name': t.get('name', ''),
+                            'target_name': kr.get('name', ''),
+                            'target_scope': kr.get('scope', ''),
+                            'target_dept_id': None, 'target_dept_name': None,
+                            'target_team_id': None, 'target_team_name': None
+                        }
+                        collected_targets.append(sub_data)
+
+        # 3. Post-process: Fill columns and fetch sub-goals
+        total_targets = len(collected_targets)
+        for i, target_data in enumerate(collected_targets):
+            if ctx and i % 5 == 0: 
+                ctx.info(f"Processing target {i+1}/{total_targets}: {target_data['target_name']}")
+            
+            # Fill specific columns based on scope
+            if target_data['target_scope'] == 'dept':
+                target_data['target_dept_id'] = target_data['target_id']
+                target_data['target_dept_name'] = target_data['target_name']
+            elif target_data['target_scope'] == 'team':
+                target_data['target_team_id'] = target_data['target_id']
+                target_data['target_team_name'] = target_data['target_name']
+            
+            # Fetch sub-goal IDs
+            target_data['list_goal_id'] = get_target_sub_goal_ids(target_data['target_id'])
+            
+            all_targets.append(target_data)
+        
+        return pd.DataFrame(all_targets)
+    except Exception as e:
+        if ctx: ctx.error(f"Error parsing targets: {e}")
+        return pd.DataFrame()
 
 def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
     """Core logic to get full detailed data"""
@@ -241,10 +345,19 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
         if not goals and not krs:
              return [{"error": "No Goals or KRs found in cycle"}]
 
-        # 2. Build Maps
+        # 1b. Fetch Targets using robust logic
+        targets_df = parse_targets_logic(cycle_path, ctx)
+        
+        # Build maps
         goal_map = {str(g['id']): g for g in goals}
         user_map = user_names
         
+        # Convert targets_df to dictionary map for easier lookup
+        targets_map = {}
+        if not targets_df.empty:
+            for _, row in targets_df.iterrows():
+                targets_map[str(row['target_id'])] = row.to_dict()
+
         # 3. Join Data
         full_data = []
         
@@ -279,6 +392,10 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
             # Common Goal/KR data
             goal_user_id = str(goal.get('user_id', ''))
             
+            # Target Info
+            target_id_ref = str(goal.get('target_id', ''))
+            t_info = targets_map.get(target_id_ref, {})
+            
             base_row = {
                 'goal_id': goal_id,
                 'goal_name': goal.get('name', ''),
@@ -286,7 +403,7 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
                 'goal_since': convert_time(goal.get('since')),
                 'goal_current_value': goal.get('current_value', 0),
                 'goal_user_id': goal_user_id,
-                'goal_target_id': str(goal.get('target_id', '')),
+                'goal_target_id': target_id_ref,
                 'kr_id': kr_id,
                 'kr_name': kr.get('name', ''),
                 'kr_content': kr.get('content', ''),
@@ -295,10 +412,17 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
                 'goal_user_name': user_map.get(goal_user_id, f"User_{goal_user_id}"),
                 'goal_username': '', 
                 'list_goal_id': '',
-                # Target placeholders
-                'target_id': '', 'target_company_id': '', 'target_company_name': '',
-                'target_name': '', 'target_scope': '', 'target_dept_id': '',
-                'target_dept_name': '', 'target_team_id': '', 'target_team_name': ''
+                # Target populated
+                'target_id': t_info.get('target_id', ''), 
+                'target_company_id': t_info.get('target_company_id', ''), 
+                'target_company_name': t_info.get('target_company_name', ''),
+                'target_name': t_info.get('target_name', ''), 
+                'target_scope': t_info.get('target_scope', ''),
+                'target_dept_id': t_info.get('target_dept_id', ''),
+                'target_dept_name': t_info.get('target_dept_name', ''),
+                'target_team_id': t_info.get('target_team_id', ''),
+                'target_team_name': t_info.get('target_team_name', ''),
+                'list_goal_id': t_info.get('list_goal_id', []) # Now included
             }
             
             # Find checkins for this KR
@@ -351,27 +475,23 @@ def get_full_okr_data(ctx: Context) -> List[Dict]:
 
 
 def _get_tree_logic(ctx: Optional[Context] = None) -> Dict:
-    """Build hierarchical OKR tree"""
+    """Build hierarchical OKR tree using robust target parsing"""
     try:
         if ctx: ctx.info("Building OKR tree...")
         cycles = get_cycle_list()
         if not cycles: return {"error": "No OKR cycles found"}
         cycle_path = cycles[0]['path']
         
-        # 1. Fetch Hierarchy (Targets)
-        url = "https://goal.base.vn/extapi/v1/cycle/get.full"
-        data = {'access_token': GOAL_ACCESS_TOKEN, 'path': cycle_path}
-        res = requests.post(url, data=data, timeout=30)
-        if res.status_code != 200: return {"error": "Failed to fetch cycle data"}
-        
-        cycle_data = res.json()
-        raw_company_targets = cycle_data.get('targets', [])
-        
+        # 1. Fetch Robust Target List
+        targets_df = parse_targets_logic(cycle_path, ctx)
+        if targets_df.empty:
+             return {"error": "No targets found"}
+
         # 2. Fetch User Goals & KRs
         goals, krs = get_goals_and_krs(cycle_path, ctx)
         
         # 3. Build lookup maps
-        # Map: KR ID -> List of User Goals (User Goals link to a 'Target ID' which is actually a Dept/Team KR ID)
+        # Map: KR ID (which acts as Dept/Team Target ID in API relation) -> List of User Goals
         goals_by_target = {}
         for g in goals:
             tid = str(g.get('target_id', ''))
@@ -387,20 +507,27 @@ def _get_tree_logic(ctx: Optional[Context] = None) -> Dict:
                 krs_by_goal[gid].append(k)
 
         # 4. Construct Tree
+        # Structure: Company -> Dept/Team -> Goals
         tree = {}
         
-        for co_target in raw_company_targets:
-            c_name = co_target.get('name', 'Unnamed Company Target')
+        # Group by Company Target
+        # targets_df has columns: target_id, target_name, target_scope, target_company_id, target_company_name
+        
+        # Get unique Company IDs
+        company_groups = targets_df.groupby(['target_company_id', 'target_company_name'])
+        
+        for (co_id, co_name), group in company_groups:
+            if not co_name: co_name = "Unknown Company Target"
             
-            # Sub-targets (Dept/Team targets) are in 'cached_objs'
             dept_team_targets = {}
             
-            for dt_target in co_target.get('cached_objs', []):
-                dt_id = str(dt_target.get('id', ''))
-                dt_name = dt_target.get('name', '')
-                dt_type = dt_target.get('scope', 'dept') # dept or team or other
+            # Iterate through Dept/Team targets in this Company scope
+            for _, row in group.iterrows():
+                dt_id = str(row['target_id'])
+                dt_name = row['target_name']
+                dt_scope = row['target_scope'] # dept/team
                 
-                # Fetch aligned User Goals
+                # Fetch aligned goals
                 aligned_goals = goals_by_target.get(dt_id, [])
                 
                 goals_dict = {}
@@ -408,7 +535,7 @@ def _get_tree_logic(ctx: Optional[Context] = None) -> Dict:
                     g_id = str(g.get('id', ''))
                     g_name = g.get('name', '')
                     
-                    # Fetch KRs for this goal
+                    # Fetch KRs
                     g_krs = krs_by_goal.get(g_id, [])
                     krs_dict = {}
                     for k in g_krs:
@@ -419,43 +546,82 @@ def _get_tree_logic(ctx: Optional[Context] = None) -> Dict:
                             'top_value': k.get('goal', 0),
                             'unit': k.get('unit', '')
                         }
-                        
+                    
                     goals_dict[g_id] = {
                         'name': g_name,
                         'krs': krs_dict
                     }
-                    
-                # Add to dept/team structure ONLY if there are goals (Active Branch)
+                
+                # Add to tree IF it has goals (Active Branch)
                 if goals_dict:
-                    if dt_type not in dept_team_targets:
-                         dept_team_targets[dt_type] = {}
-                    
-                    dept_team_targets[dt_type][dt_name] = { 
-                        'name': dt_name,
-                        'goals': goals_dict
-                    }
-
-            # Only add Company Target if it has active Dept/Team targets
+                     if dt_scope not in dept_team_targets:
+                         dept_team_targets[dt_scope] = {}
+                     
+                     dept_team_targets[dt_scope][dt_name] = {
+                         'name': dt_name,
+                         'goals': goals_dict
+                     }
+            
+            # Only add Company Node if it has active children
             if dept_team_targets:
-                tree[c_name] = {
-                    'name': c_name,
+                tree[co_name] = {
+                    'name': co_name,
                     'target_dept_or_team': dept_team_targets
                 }
-            
+                
         return tree
 
     except Exception as e:
         if ctx: ctx.error(f"Error building tree: {e}")
         return {"error": str(e)}
 
+def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
+    """Convert API tree format to a generic list of nodes for easier display"""
+    root_children = []
+    
+    for co_name, co_data in tree_data.items():
+        co_node = {'label': f"🏢 {co_name}", 'children': []}
+        
+        # Dept/Team types
+        dept_team_targets = co_data.get('target_dept_or_team', {})
+        
+        for dtype, targets in dept_team_targets.items():
+            # Iterate targets directly
+            for t_name, t_data in targets.items():
+                target_label = f"🎯 [{dtype.upper()}] {t_name}"
+                t_node = {'label': target_label, 'children': []}
+                
+                goals = t_data.get('goals', {})
+                for g_id, g_data in goals.items():
+                    g_node = {'label': f"📝 {g_data['name']}", 'children': []}
+                    
+                    krs = g_data.get('krs', {})
+                    for k_id, k_data in krs.items():
+                        val = k_data.get('value', 0)
+                        top = k_data.get('top_value', 0)
+                        unit = k_data.get('unit', '')
+                        kr_label = f"🔹 {k_data['name']} ({val}/{top} {unit})"
+                        g_node['children'].append({'label': kr_label})
+                    
+                    t_node['children'].append(g_node)
+                
+                co_node['children'].append(t_node)
+        
+        root_children.append(co_node)
+        
+    return {'label': 'ROOT', 'children': root_children}
 
 @mcp.tool(annotations={"readOnlyHint": True})
 def get_okr_tree(ctx: Context) -> Dict:
     """
-    Get the hierarchical OKR tree structure.
-    Returns: Company Target -> Dept/Team Target -> User Goal -> KRs.
+    Get the hierarchical OKR tree visualization structure.
+    Returns a 'visual node' tree: Root -> Company -> Dept/Team -> User Goal -> KRs.
+    Each node has 'label' and optional 'children'.
     """
-    return _get_tree_logic(ctx)
+    raw_tree = _get_tree_logic(ctx)
+    if "error" in raw_tree: return raw_tree
+    
+    return _convert_to_visual_nodes(raw_tree)
 
 
 if __name__ == "__main__":
