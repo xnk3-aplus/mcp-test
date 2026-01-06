@@ -10,9 +10,44 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 # Tokens from environment
 GOAL_ACCESS_TOKEN = os.getenv('GOAL_ACCESS_TOKEN')
 ACCOUNT_ACCESS_TOKEN = os.getenv('ACCOUNT_ACCESS_TOKEN')
+
+# Department and Team ID Mappings
+DEPT_ID_MAPPING = {
+    "450": "BP Thị Trường",
+    "451": "BP Cung Ứng",
+    "452": "BP Nhân Sự Hành Chính",
+    "453": "BP Tài Chính Kế Toán",
+    "542": "Khối hiện trường (các vùng miền)",
+    "651": "Ban Giám Đốc",
+    "652": "BP R&D, Business Line mới"
+}
+
+TEAM_ID_MAPPING = {
+    "307": "Đội Bán hàng - Chăm sóc khách hàng",
+    "547": "Đội Nguồn Nhân Lực",
+    "548": "Đội Kế toán - Quản trị",
+    "1032": "Team Hoàn Thuế VAT (Nhóm)",
+    "1128": "Đội Thanh Hóa (Miền Bắc)",
+    "1129": "Đội Quy Nhơn",
+    "1133": "Đội Hành chính - Số hóa",
+    "1134": "Team Thực tập sinh - Thử nghiệm mới (Nhóm)",
+    "1138": "Đội Marketing - AI",
+    "1141": "Đội Tài chính - Đầu tư",
+    "1148": "Đội Logistic quốc tế - Thị trường",
+    "546": "Đội Mua hàng - Out source",
+    "1130": "Đội Daknong",
+    "1131": "Đội KCS VT-SG",
+    "1135": "Đội Chuỗi cung ứng nội địa - Thủ tục XNK",
+    "1132": "Đội Văn hóa - Chuyển hóa",
+    "1136": "Đội Chất lượng - Sản phẩm",
+    "1137": "Team 1 (Nhóm 1)",
+    "1139": "Đội Data - Hệ thống - Số hóa",
+    "1375": "AGILE _ DỰ ÁN 1"
+}
 
 # Create FastMCP server
 mcp = FastMCP("OKR Analysis Server")
@@ -406,9 +441,14 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
         full_data = []
         
 
-        # Helper to get safe string
-        def safe_get(d, k, default=''):
-            return str(d.get(k, default)) if d.get(k) is not None else default
+        # Helper to extract form values
+        def extract_form_value(form_array, field_name):
+            if not form_array or not isinstance(form_array, list):
+                return ""
+            for item in form_array:
+                if item.get('name') == field_name:
+                    return item.get('value', item.get('display', ""))
+            return ""
 
         # Helper for timestamp conversion
         def convert_time(ts):
@@ -440,6 +480,16 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
             target_id_ref = str(goal.get('target_id', ''))
             t_info = targets_map.get(target_id_ref, {})
             
+            # Extract Direct Goal Data (Sync with goal.py)
+            g_dept_id = str(goal.get('dept_id', '0'))
+            g_team_id = str(goal.get('team_id', '0'))
+            
+            # Map names
+            g_dept_name = "" if (g_dept_id == "0" or g_dept_id == 0 or not g_dept_id) else DEPT_ID_MAPPING.get(g_dept_id, "")
+            g_team_name = "" if (g_team_id == "0" or g_team_id == 0 or not g_team_id) else TEAM_ID_MAPPING.get(g_team_id, "")
+            
+            goal_form = goal.get('form', [])
+            
             base_row = {
                 'goal_id': goal_id,
                 'goal_name': goal.get('name', ''),
@@ -466,7 +516,16 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
                 'target_dept_name': t_info.get('target_dept_name', ''),
                 'target_team_id': t_info.get('target_team_id', ''),
                 'target_team_name': t_info.get('target_team_name', ''),
-                'list_goal_id': t_info.get('list_goal_id', [])
+                'list_goal_id': t_info.get('list_goal_id', []),
+                
+                # Direct Goal Extractions [NEW]
+                'dept_id': g_dept_id,
+                'team_id': g_team_id,
+                'dept_name': g_dept_name,
+                'team_name': g_team_name,
+                'Mức độ đóng góp vào mục tiêu công ty': extract_form_value(goal_form, 'Mức độ đóng góp vào mục tiêu công ty'),
+                'Mức độ ưu tiên mục tiêu của Quý': extract_form_value(goal_form, 'Mức độ ưu tiên mục tiêu của Quý'),
+                'Tính khó/tầm ảnh hưởng đến hệ thống': extract_form_value(goal_form, 'Tính khó/tầm ảnh hưởng đến hệ thống'),
             }
             
             # Add dynamic form fields from target
@@ -478,7 +537,10 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
             ]
             for k, v in t_info.items():
                 if k not in standard_keys:
-                    base_row[k] = v
+                    # Avoid overwriting user-requested goal-level fields if target also has them (duplicates)
+                    # We prioritize the Goal-level extraction above for the 3 specific fields
+                    if k not in ['Mức độ đóng góp vào mục tiêu công ty', 'Mức độ ưu tiên mục tiêu của Quý', 'Tính khó/tầm ảnh hưởng đến hệ thống']:
+                        base_row[k] = v
             
             # Find checkins for this KR
             kr_checkins = [c for c in checkins if str(c.get('obj_export', {}).get('id', '')) == kr_id]
@@ -492,17 +554,20 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
                     'checkin_since_timestamp': '', 'cong_viec_tiep_theo': '',
                     'checkin_target_name': '', 'checkin_kr_current_value': 0, 'checkin_user_id': ''
                 })
+                # Ensure extract_form_value is used or default empty
+                row['cong_viec_tiep_theo'] = ''
                 full_data.append(row)
             else:
                 for c in kr_checkins:
                     row = base_row.copy()
                     checkin_ts = c.get('since', '')
+                    c_form = c.get('form', [])
                     row.update({
                         'checkin_id': str(c.get('id', '')),
                         'checkin_name': c.get('name', ''),
                         'checkin_since': convert_time(checkin_ts),
                         'checkin_since_timestamp': checkin_ts,
-                        'cong_viec_tiep_theo': c.get('form', [{}])[0].get('value', '') if c.get('form') else '', # Better extraction
+                        'cong_viec_tiep_theo': extract_form_value(c_form, 'Công việc tiếp theo') or extract_form_value(c_form, 'Mô tả tiến độ') or '', 
                         'checkin_target_name': '', 
                         'checkin_kr_current_value': c.get('current_value', 0),
                         'checkin_user_id': str(c.get('user_id', ''))
