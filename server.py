@@ -650,6 +650,17 @@ def _get_tree_logic(ctx: Optional[Context] = None) -> Dict:
                 # Fetch aligned goals
                 aligned_goals = goals_by_target.get(dt_id, [])
                 
+                # Get mapped names from target row if available (parse_targets_logic extracts them)
+                t_team_id = str(row.get('team_id', ''))
+                t_dept_id = str(row.get('dept_id', ''))
+                
+                # Resolve mapped name based on scope
+                mapped_context_name = ""
+                if dt_scope == 'dept' and t_dept_id:
+                     mapped_context_name = DEPT_ID_MAPPING.get(t_dept_id, "")
+                elif dt_scope == 'team' and t_team_id:
+                     mapped_context_name = TEAM_ID_MAPPING.get(t_team_id, "")
+
                 goals_dict = {}
                 for g in aligned_goals:
                     g_id = str(g.get('id', ''))
@@ -677,8 +688,11 @@ def _get_tree_logic(ctx: Optional[Context] = None) -> Dict:
                      if dt_scope not in dept_team_targets:
                          dept_team_targets[dt_scope] = {}
                      
+                     # Store mapped name with logic to handle uniqueness (use unique key but store display label)
+                     # We use dt_name (target name) as key, but add extra info
                      dept_team_targets[dt_scope][dt_name] = {
                          'name': dt_name,
+                         'mapped_name': mapped_context_name,
                          'goals': goals_dict
                      }
             
@@ -708,7 +722,11 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
         for dtype, targets in dept_team_targets.items():
             # Iterate targets directly
             for t_name, t_data in targets.items():
-                target_label = f"🎯 [{dtype.upper()}] {t_name}"
+                # Use mapped name if available, otherwise fallback to generic type
+                mapped_name = t_data.get('mapped_name', '')
+                scope_label = mapped_name if mapped_name else dtype.upper()
+                
+                target_label = f"🎯 [{scope_label}] {t_name}"
                 t_node = {'label': target_label, 'children': []}
                 
                 goals = t_data.get('goals', {})
