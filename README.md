@@ -87,10 +87,10 @@ ngrok http 8000
 
 ## 📝 API Reference
 
-| Tool | Description | Auto-Run |
-|------|-------------|----------|
-| `get_full_okr_data` | Returns detailed dataset as JSON. Standardized columns: `Mức độ đóng góp`, `Mức độ ưu tiên`, `Tính khó`. | ✅ Yes |
-| `get_okr_tree` | Returns a hierarchical visualization of the OKR tree (ASCII/Visual Nodes). 🌳 | ✅ Yes |
+| Tool | Description | Tags | Auto-Run |
+|------|-------------|------|----------|
+| `get_full_okr_data` | Lấy dữ liệu OKR chi tiết (Goals, KRs, Check-ins) của chu kỳ hiện tại. Hỗ trợ trích xuất các trường form tùy chỉnh. | `okr`, `data`, `report` | ✅ Yes |
+| `get_okr_tree` | Lấy sơ đồ cây OKR phân cấp (Company > Dept/Team > Goal). Hỗ trợ hiển thị tên BP/Team đã map. | `okr`, `tree`, `visualization` | ✅ Yes |
 
 ## 📄 License
 MIT License

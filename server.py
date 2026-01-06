@@ -487,7 +487,12 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
         return [{"error": str(e)}]
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(
+    name="get_full_okr_data",
+    description="Lấy dữ liệu OKR chi tiết (Goals, KRs, Check-ins) của chu kỳ hiện tại. Hỗ trợ trích xuất các trường form tùy chỉnh.",
+    tags={"okr", "data", "report"},
+    annotations={"readOnlyHint": True}
+)
 def get_full_okr_data(ctx: Context) -> List[Dict]:
     """
     Get the full monthly OKR data dataset as detailed JSON.
@@ -655,7 +660,12 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
         
     return {'label': 'ROOT', 'children': root_children}
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(
+    name="get_okr_tree",
+    description="Lấy sơ đồ cây OKR phân cấp (Company > Dept/Team > Goal). Hỗ trợ hiển thị tên BP/Team đã map.",
+    tags={"okr", "tree", "visualization"},
+    annotations={"readOnlyHint": True}
+)
 def get_okr_tree(ctx: Context) -> Dict:
     """
     Get the hierarchical OKR tree visualization structure.
