@@ -312,7 +312,27 @@ def parse_targets_logic(cycle_path: str, ctx: Optional[Context] = None) -> pd.Da
         if ctx: ctx.error(f"Error parsing targets: {e}")
         return pd.DataFrame()
 
-def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
+# Helper to resolve cycle path
+def _resolve_cycle_path(cycle_arg: str = None, ctx: Context = None) -> str:
+    cycles = get_cycle_list()
+    if not cycles: return None
+    
+    if not cycle_arg:
+        if ctx: ctx.info(f"No cycle specified, defaulting to latest: {cycles[0]['name']}")
+        return cycles[0]['path']
+        
+    # Search by name
+    lower_arg = cycle_arg.lower()
+    for c in cycles:
+        if lower_arg in c['name'].lower():
+            if ctx: ctx.info(f"Selected cycle: {c['name']}")
+            return c['path']
+            
+    # Fallback/Default
+    if ctx: ctx.info(f"Cycle '{cycle_arg}' not found, defaulting to latest: {cycles[0]['name']}")
+    return cycles[0]['path']
+
+def _get_full_data_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> List[Dict]:
     """Core logic to get full detailed data"""
     try:
         if ctx: ctx.info("Starting full data fetch...")
