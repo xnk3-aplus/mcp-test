@@ -684,12 +684,20 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
         
         for dtype, targets in dept_team_targets.items():
             # Iterate targets directly
-            for t_name, t_data in targets.items():
-                # Use mapped name if available, otherwise fallback to generic type
+            for t_name_key, t_data in targets.items(): # Renamed t_name to t_name_key to avoid confusion with t_data['name']
+                t_name = t_data.get('name', '')
                 mapped_name = t_data.get('mapped_name', '')
+                
+                # Use mapped name if available for clearer context, but KEEP target name
+                if mapped_name:
+                    label_name = f"{mapped_name}: {t_name}"
+                else:
+                    label_name = t_name
+                
+                # The scope_label should still reflect the mapped name or generic type
                 scope_label = mapped_name if mapped_name else dtype.upper()
                 
-                target_label = f"🎯 [{scope_label}] {t_name}"
+                target_label = f"🎯 [{scope_label}] {label_name}"
                 t_node = {'label': target_label, 'children': []}
                 
                 goals = t_data.get('goals', {})
