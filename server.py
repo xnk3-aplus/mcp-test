@@ -319,13 +319,14 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
         cycles = get_cycle_list()
         if not cycles: return [{"error": "No OKR cycles found"}]
         
-        cycle_path = cycles[0]['path']
-        if ctx: ctx.info(f"Cycle: {cycles[0]['name']}")
+        
+        # Resolve cycle
+        cycle_path = _resolve_cycle_path(cycle_arg, ctx)
+        if not cycle_path: return [{"error": "No OKR cycles found"}]
         
         # 1. Fetch all raw data
         checkins = get_checkins_data(cycle_path, ctx)
         goals, krs = get_goals_and_krs(cycle_path, ctx)
-        user_names = get_user_names()
         
         if not goals and not krs:
              return [{"error": "No Goals or KRs found in cycle"}]
@@ -334,8 +335,8 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
         targets_df = parse_targets_logic(cycle_path, ctx)
         
         # Build maps
+        user_map = get_user_names()
         goal_map = {str(g['id']): g for g in goals}
-        user_map = user_names
         
         # Convert targets_df to dictionary map for easier lookup
         targets_map = {}
@@ -368,7 +369,7 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
 
         # Process all KRs (safe iteration)
         if not krs:
-            # Handle case with goals but no KRs if necessary, but typically Goals have KRs
+            # Check for goals without KRs if needed, but for now we follow existing logic
             pass
 
         for kr in krs:
@@ -493,25 +494,25 @@ def _get_full_data_logic(ctx: Optional[Context] = None) -> List[Dict]:
     tags={"okr", "data", "report"},
     annotations={"readOnlyHint": True}
 )
-def get_full_okr_data(ctx: Context) -> List[Dict]:
+def get_full_okr_data(ctx: Context, cycle: str = None) -> List[Dict]:
     """
     Get the full monthly OKR data dataset as detailed JSON.
     Returns a list of records merging Goals, KRs, and Check-ins.
-    Fields include: goal_id, goal_name, kr_name, checkin_since, cong_viec_tiep_theo, etc.
+    
+    Args:
+        cycle (str, optional): Name of the cycle to fetch (e.g. "Q4 2024"). Defaults to current/latest.
     """
-    return _get_full_data_logic(ctx)
+    return _get_full_data_logic(ctx, cycle)
 
 
-
-
-
-def _get_tree_logic(ctx: Optional[Context] = None) -> Dict:
+def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dict:
     """Build hierarchical OKR tree using robust target parsing"""
     try:
         if ctx: ctx.info("Building OKR tree...")
-        cycles = get_cycle_list()
-        if not cycles: return {"error": "No OKR cycles found"}
-        cycle_path = cycles[0]['path']
+        
+        # Resolve cycle
+        cycle_path = _resolve_cycle_path(cycle_arg, ctx)
+        if not cycle_path: return {"error": "No OKR cycles found"}
         
         # 1. Fetch Robust Target List
         targets_df = parse_targets_logic(cycle_path, ctx)
@@ -666,13 +667,15 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
     tags={"okr", "tree", "visualization"},
     annotations={"readOnlyHint": True}
 )
-def get_okr_tree(ctx: Context) -> Dict:
+def get_okr_tree(ctx: Context, cycle: str = None) -> Dict:
     """
     Get the hierarchical OKR tree visualization structure.
     Returns a 'visual node' tree: Root -> Company -> Dept/Team -> User Goal -> KRs.
-    Each node has 'label' and optional 'children'.
+    
+    Args:
+        cycle (str, optional): Name of the cycle to fetch (e.g. "Q4 2024"). Defaults to current/latest.
     """
-    raw_tree = _get_tree_logic(ctx)
+    raw_tree = _get_tree_logic(ctx, cycle)
     if "error" in raw_tree: return raw_tree
     
     return _convert_to_visual_nodes(raw_tree)
