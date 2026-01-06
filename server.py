@@ -320,7 +320,9 @@ def parse_targets_logic(cycle_path: str, ctx: Optional[Context] = None) -> pd.Da
                     'target_name': t.get('name', ''),
                     'target_scope': scope,
                     'target_dept_id': None, 'target_dept_name': None,
-                    'target_team_id': None, 'target_team_name': None
+                    'target_team_id': None, 'target_team_name': None,
+                    'team_id': str(t.get('team_id', '')),
+                    'dept_id': str(t.get('dept_id', ''))
                 }
                 # Merge form data
                 target_data.update(extract_form_data(t))
@@ -337,7 +339,9 @@ def parse_targets_logic(cycle_path: str, ctx: Optional[Context] = None) -> pd.Da
                             'target_name': kr.get('name', ''),
                             'target_scope': kr.get('scope', ''),
                             'target_dept_id': None, 'target_dept_name': None,
-                            'target_team_id': None, 'target_team_name': None
+                            'target_team_id': None, 'target_team_name': None,
+                            'team_id': str(kr.get('team_id', '')),
+                            'dept_id': str(kr.get('dept_id', ''))
                         }
                         # Merge form data from the sub-object (kr)
                         sub_data.update(extract_form_data(kr))
