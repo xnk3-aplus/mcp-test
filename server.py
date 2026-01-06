@@ -69,11 +69,14 @@ def get_cycle_list() -> List[Dict]:
             if cycle.get('metatype') == 'quarterly':
                 try:
                     start_time = datetime.fromtimestamp(float(cycle['start_time']))
+                    end_time = datetime.fromtimestamp(float(cycle['end_time']))
                     quarterly_cycles.append({
                         'name': cycle['name'],
                         'path': cycle['path'],
                         'start_time': start_time,
-                        'formatted_start_time': start_time.strftime('%d/%m/%Y')
+                        'end_time': end_time,
+                        'formatted_start_time': start_time.strftime('%d/%m/%Y'),
+                        'formatted_end_time': end_time.strftime('%d/%m/%Y')
                     })
                 except:
                     continue
@@ -321,11 +324,39 @@ def _resolve_cycle_path(cycle_arg: str = None, ctx: Context = None) -> str:
         if ctx: ctx.info(f"No cycle specified, defaulting to latest: {cycles[0]['name']}")
         return cycles[0]['path']
         
-    # Search by name
-    lower_arg = cycle_arg.lower()
+    lower_arg = cycle_arg.lower().strip()
+    
+    # 1. Try date matching (MM/YYYY or YYYY-MM)
+    try:
+        query_date = None
+        # Try MM/YYYY
+        if '/' in lower_arg:
+            parts = lower_arg.split('/')
+            if len(parts) == 2:
+                month, year = int(parts[0]), int(parts[1])
+                query_date = datetime(year, month, 15) # Pick middle of month
+        # Try YYYY-MM
+        elif '-' in lower_arg:
+             parts = lower_arg.split('-')
+             if len(parts) == 2:
+                 year, month = int(parts[0]), int(parts[1])
+                 query_date = datetime(year, month, 15)
+        
+        if query_date:
+            if ctx: ctx.info(f"Parsed date query: {query_date.strftime('%m/%Y')}")
+            # Find cycle covering this date
+            for c in cycles:
+                if c['start_time'] <= query_date <= c['end_time']:
+                    if ctx: ctx.info(f"Found cycle by date: {c['name']}")
+                    return c['path']
+    except Exception as e:
+        if ctx: ctx.info(f"Date parsing failed: {e}, falling back to name search")
+        pass
+
+    # 2. Search by name (Fallback)
     for c in cycles:
         if lower_arg in c['name'].lower():
-            if ctx: ctx.info(f"Selected cycle: {c['name']}")
+            if ctx: ctx.info(f"Selected cycle by name: {c['name']}")
             return c['path']
             
     # Fallback/Default
