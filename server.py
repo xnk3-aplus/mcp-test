@@ -662,7 +662,7 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
 
 @mcp.tool(
     name="get_okr_tree",
-    description="Lấy sơ đồ cây OKR phân cấp (Company > Dept/Team > Goal). Hỗ trợ hiển thị tên BP/Team đã map.",
+    description="Lấy cây mục tiêu OKR (Company > Dept/Team > Goal). Hỗ trợ hiển thị tên BP/Team đã map.",
     tags={"okr", "tree", "visualization"},
     annotations={"readOnlyHint": True}
 )
