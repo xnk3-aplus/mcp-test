@@ -12,8 +12,10 @@ load_dotenv()
 
 
 # Tokens from environment
+# Tokens from environment
 GOAL_ACCESS_TOKEN = os.getenv('GOAL_ACCESS_TOKEN')
 ACCOUNT_ACCESS_TOKEN = os.getenv('ACCOUNT_ACCESS_TOKEN')
+GG_SCRIPT_URL = os.getenv('GG_SCRIPT_URL')
 
 # Department and Team ID Mappings
 DEPT_ID_MAPPING = {
@@ -362,6 +364,46 @@ def _resolve_cycle_path(cycle_arg: str = None, ctx: Context = None) -> str:
     # Fallback/Default
     if ctx: ctx.info(f"Cycle '{cycle_arg}' not found, defaulting to latest: {cycles[0]['name']}")
     return cycles[0]['path']
+
+def get_cycle_info(cycle_arg: str = None):
+    """Resolve cycle arg to full cycle info (name, path)"""
+    cycles = get_cycle_list()
+    if not cycles: return None
+    
+    selected_cycle = None
+    if not cycle_arg:
+        selected_cycle = cycles[0]
+    else:
+        lower_arg = cycle_arg.lower().strip()
+        # 1. Try date
+        try:
+             # Reuse date logic logic or just loop since it's short
+             query_date = None
+             if '/' in lower_arg:
+                parts = lower_arg.split('/')
+                if len(parts) == 2: query_date = datetime(int(parts[1]), int(parts[0]), 15)
+             elif '-' in lower_arg:
+                 parts = lower_arg.split('-')
+                 if len(parts) == 2: query_date = datetime(int(parts[0]), int(parts[1]), 15)
+             
+             if query_date:
+                for c in cycles:
+                    if c['start_time'] <= query_date <= c['end_time']:
+                        selected_cycle = c
+                        break
+        except: pass
+        
+        # 2. Name search
+        if not selected_cycle:
+            for c in cycles:
+                if lower_arg in c['name'].lower():
+                    selected_cycle = c
+                    break
+    
+    # Fallback
+    if not selected_cycle: selected_cycle = cycles[0]
+    
+    return selected_cycle
 
 def _get_full_data_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> List[Dict]:
     """Core logic to get full detailed data"""
@@ -736,8 +778,185 @@ def get_okr_tree(ctx: Context, cycle: str = None) -> Dict:
     raw_tree = _get_tree_logic(ctx, cycle)
     if "error" in raw_tree: return raw_tree
     
+
     return _convert_to_visual_nodes(raw_tree)
 
+
+@mcp.tool(
+    name="update_checkin_score",
+    description="Updates the 'next_action_score' for a specific check-in in the Google Sheet. Use checkin_id as the key.",
+    tags={"okr", "sheet", "update"}
+)
+def update_checkin_score(ctx: Context, checkin_id: str, score: str, sheet_name: str = None) -> Dict:
+    """
+    Update the next_action_score column for a specific checkin row.
+    
+    Args:
+        checkin_id: The ID of the checkin to update.
+        score: The score/text to write (e.g. "8/10: Good progress").
+        sheet_name: Optional. Name of the sheet (Cycle Name). If not provided, defaults to current cycle name logic or first sheet.
+    """
+    if not GG_SCRIPT_URL:
+        return {"error": "GG_SCRIPT_URL not set in environment variables."}
+    
+    payload = {
+        "action": "update_score",
+        "checkin_id": str(checkin_id),
+        "score": str(score)
+    }
+    if sheet_name:
+        payload["sheet_name"] = sheet_name
+
+    try:
+        if ctx: ctx.info(f"Updating score for {checkin_id} in sheet {sheet_name}...")
+        response = requests.post(GG_SCRIPT_URL, json=payload, timeout=30)
+        
+        if response.status_code == 200:
+             return response.json()
+        else:
+             return {"error": f"Failed with status {response.status_code}: {response.text}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool(
+    name="get_pending_score_checkins",
+    description="Retrieves a list of checkins from the Google Sheet that have an empty 'next_action_score'.",
+    tags={"okr", "sheet", "get"}
+)
+def get_pending_score_checkins(ctx: Context, sheet_name: str = None) -> Dict:
+    """
+    Get rows that need scoring from the Google Sheet.
+    
+    Args:
+        sheet_name: Optional. Name of the sheet (Cycle Name). Defaults to active if unused.
+    """
+    if not GG_SCRIPT_URL:
+        return {"error": "GG_SCRIPT_URL not set in environment variables."}
+    
+    payload = {
+        "action": "get_missing_scores"
+    }
+    if sheet_name:
+        payload["sheet_name"] = sheet_name
+
+    try:
+        if ctx: ctx.info(f"Fetching pending scores from sheet {sheet_name}...")
+        response = requests.post(GG_SCRIPT_URL, json=payload, timeout=30)
+        
+        if response.status_code == 200:
+             return response.json()
+        else:
+             return {"error": f"Failed with status {response.status_code}: {response.text}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+    except Exception as e:
+        return {"error": str(e)}
+
+@mcp.tool(
+    name="sync_new_checkins",
+    description="Fetches latest checkins from Base.vn and syncs ONLY the new ones (incremental update) to Google Sheets.",
+    tags={"okr", "sheet", "sync"}
+)
+def sync_new_checkins(ctx: Context, cycle: str = None) -> Dict:
+    """
+    Fetches OKR checkins and appends missing ones to the Google Sheet.
+    Args:
+        cycle: Cycle name/date (e.g. '01/2026'). Defaults to current cycle.
+    """
+    if not GG_SCRIPT_URL:
+        return {"error": "GG_SCRIPT_URL not set"}
+
+    try:
+        if ctx: ctx.info("Resolving cycle...")
+        cycle_info = get_cycle_info(cycle)
+        if not cycle_info: return {"error": "Cycle not found"}
+        
+        cycle_path = cycle_info['path']
+        sheet_name = cycle_info['name']
+        
+        if ctx: ctx.info(f"Fetching data for {sheet_name}...")
+        
+        # 1. Fetch KRs for Name Mapping (Lightweight logic)
+        krs = []
+        krs_url = "https://goal.base.vn/extapi/v1/cycle/krs"
+        for p in range(1, 10): # limit pages
+            r = requests.post(krs_url, data={"access_token": GOAL_ACCESS_TOKEN, "path": cycle_path, "page": p}, timeout=30)
+            if r.status_code!=200: break
+            d = r.json()
+            if isinstance(d, list) and d: d=d[0]
+            curr_krs = d.get('krs', [])
+            if not curr_krs: break
+            krs.extend(curr_krs)
+        
+        kr_map = {str(k['id']): k.get('name', '') for k in krs}
+
+        # 2. Fetch Checkins
+        all_checkins = get_checkins_data(cycle_path) # Uses existing server.py helper
+        
+        # 3. Format Data
+        formatted_rows = []
+        
+        # Headers
+        headers = [
+            'checkin_id', 'checkin_name', 'checkin_since', 'checkin_since_timestamp',
+            'cong_viec_tiep_theo', 'checkin_target_name', 'checkin_kr_current_value',
+            'checkin_user_id', 'kr_name', 'next_action_score'
+        ]
+        formatted_rows.append(headers)
+        
+        tz_hcm = pytz.timezone('Asia/Ho_Chi_Minh')
+        
+        for c in all_checkins:
+            obj_export = c.get('obj_export', {})
+            kr_id = str(obj_export.get('id', ''))
+            kr_name = kr_map.get(kr_id, obj_export.get('name', ''))
+            
+            checkin_ts = c.get('since', '')
+            since_fmt = ''
+            if checkin_ts:
+                try:
+                    dt = datetime.fromtimestamp(int(checkin_ts), tz=timezone.utc).astimezone(tz_hcm)
+                    since_fmt = dt.strftime('%Y-%m-%d %H:%M:%S')
+                except: pass
+                
+            c_form = c.get('form', [])
+            next_work = ''
+            for f in c_form:
+                if f.get('name') in ['Công việc tiếp theo', 'Mô tả tiến độ', 'Những công việc quan trọng, trọng yếu, điểm nhấn thực hiện trong Tuần để đạt được kết quả (không phải công việc giải quyết hàng ngày)']:
+                    next_work = f.get('value', f.get('display', ''))
+                    break
+            
+            row = [
+                str(c.get('id', '')),
+                c.get('name', ''),
+                since_fmt,
+                checkin_ts,
+                next_work,
+                obj_export.get('name', ''),
+                c.get('current_value', 0),
+                str(c.get('user_id', '')),
+                kr_name,
+                '' # next_action_score empty for AI
+            ]
+            formatted_rows.append(row)
+            
+        # 4. Send to Google Script
+        payload = {
+            "action": "append_new_checkins",
+            "sheet_name": sheet_name,
+            "data": formatted_rows
+        }
+        
+        if ctx: ctx.info(f"Syncing {len(formatted_rows)-1} checkins to {sheet_name}...")
+        
+        post_res = requests.post(GG_SCRIPT_URL, json=payload, timeout=60)
+        return post_res.json()
+        
+    except Exception as e:
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     mcp.run(transport="http", port=8000)
