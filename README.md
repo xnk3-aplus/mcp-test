@@ -7,12 +7,13 @@ A powerful Model Context Protocol (MCP) server for analyzing OKR (Objectives and
 - **🌳 Visual Tree**: Generates hierarchical OKR trees with clear visualization.
 - **📝 Form Data Extraction**: Automatically extracts custom fields (e.g., Priority, Contribution) from Targets.
 - **🤖 AI Ready**: Designed for integration with ChatGPT via MCP.
+- **⚡ Robust Sync**: Includes auto-retry logic and incremental sync capabilities.
 
 ## 🛠️ Prerequisites
 
 - Python 3.10+
 - [ngrok](https://ngrok.com/) (For manual deployment)
-- Base.vn API Tokens (`GOAL_ACCESS_TOKEN`, `ACCOUNT_ACCESS_TOKEN`)
+- Base.vn API Tokens
 
 ## 📦 Local Installation
 
@@ -27,8 +28,8 @@ A powerful Model Context Protocol (MCP) server for analyzing OKR (Objectives and
    pip install -r requirements.txt
    ```
 
-3. **Configure Environment:**
-   Create a `.env` file in the root directory:
+3. **Configure Tokens:**
+   Create a `.env` file in the root directory (based on `.env.example` if available) and add your Base.vn tokens:
    ```env
    GOAL_ACCESS_TOKEN=your_goal_token_here
    ACCOUNT_ACCESS_TOKEN=your_account_token_here
@@ -50,7 +51,6 @@ You can deploy this server in two ways:
 3. **Create Project**:
    - Select your repository.
    - Entrypoint: `server.py:mcp`
-   - **Environment Variables**: Add your `GOAL_ACCESS_TOKEN` and `ACCOUNT_ACCESS_TOKEN` in the dashboard.
 4. **Deploy**: Click Deploy. You get a secure URL (e.g., `https://okr-server.fastmcp.app/mcp`).
 5. **Connect**: Use this URL in your MCP client (e.g., ChatGPT, Cursor).
 
