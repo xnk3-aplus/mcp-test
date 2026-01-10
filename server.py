@@ -593,21 +593,7 @@ def _get_full_data_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -
         return [{"error": str(e)}]
 
 
-@mcp.tool(
-    name="get_full_okr_data",
-    description="Lấy dữ liệu OKR chi tiết (Goals, KRs, Check-ins) của chu kỳ hiện tại. Hỗ trợ trích xuất các trường form tùy chỉnh.",
-    tags={"okr", "data", "report"},
-    annotations={"readOnlyHint": True}
-)
-def get_full_okr_data(ctx: Context, cycle: str = None) -> List[Dict]:
-    """
-    Get the full monthly OKR data dataset as detailed JSON.
-    Returns a list of records merging Goals, KRs, and Check-ins.
-    
-    Args:
-        cycle (str, optional): Name of the cycle to fetch (e.g. "Q4 2024"). Defaults to current/latest.
-    """
-    return _get_full_data_logic(ctx, cycle)
+
 
 
 def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dict:
@@ -630,11 +616,16 @@ def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dic
         # 3. Build lookup maps
         # Map: KR ID (which acts as Dept/Team Target ID in API relation) -> List of User Goals
         goals_by_target = {}
+        personal_goals = [] # Goals with no target_id
+        
         for g in goals:
             tid = str(g.get('target_id', ''))
-            if tid:
+            # Check for valid target_id (not None, not empty, not "0")
+            if tid and tid != "0":
                 if tid not in goals_by_target: goals_by_target[tid] = []
                 goals_by_target[tid].append(g)
+            else:
+                personal_goals.append(g)
                 
         krs_by_goal = {}
         for k in krs:
@@ -717,7 +708,54 @@ def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dic
             if dept_team_targets:
                 tree[co_name] = {
                     'name': co_name,
+                    'type': 'company',
                     'target_dept_or_team': dept_team_targets
+                }
+        
+        # 5. Process Personal Goals (No Target)
+        if personal_goals:
+            # Group by Team/Dept
+            personal_groups = {}
+            
+            for g in personal_goals:
+                # Determine group
+                g_team_id = str(g.get('team_id', ''))
+                g_dept_id = str(g.get('dept_id', ''))
+                
+                group_name = "Unknown Group"
+                if g_team_id and g_team_id != "0":
+                    group_name = TEAM_ID_MAPPING.get(g_team_id, f"Team {g_team_id}")
+                elif g_dept_id and g_dept_id != "0":
+                    group_name = DEPT_ID_MAPPING.get(g_dept_id, f"Dept {g_dept_id}")
+                
+                if group_name not in personal_groups:
+                    personal_groups[group_name] = {}
+                
+                g_id = str(g.get('id', ''))
+                g_name = g.get('name', '')
+                
+                # Fetch KRs
+                g_krs = krs_by_goal.get(g_id, [])
+                krs_dict = {}
+                for k in g_krs:
+                    k_id = str(k.get('id', ''))
+                    krs_dict[k_id] = {
+                        'name': k.get('name', ''),
+                        'value': k.get('current_value', 0),
+                        'top_value': k.get('goal', 0),
+                        'unit': k.get('unit', '')
+                    }
+                
+                personal_groups[group_name][g_id] = {
+                    'name': g_name,
+                    'krs': krs_dict
+                }
+            
+            if personal_groups:
+                tree['PERSONAL'] = {
+                    'name': 'Mục tiêu cá nhân',
+                    'type': 'personal',
+                    'groups': personal_groups
                 }
                 
         return tree
@@ -730,30 +768,75 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
     """Convert API tree format to a generic list of nodes for easier display"""
     root_children = []
     
-    for co_name, co_data in tree_data.items():
-        co_node = {'label': f"🏢 {co_name}", 'children': []}
+    # Sort keys to ensure consistent order, but put PERSONAL last if possible
+    keys = list(tree_data.keys())
+    keys.sort(key=lambda x: 1 if x == 'PERSONAL' else 0) # PERSONAL at end
+    
+    for top_key in keys:
+        node_data = tree_data[top_key]
+        node_type = node_data.get('type', 'company')
         
-        # Dept/Team types
-        dept_team_targets = co_data.get('target_dept_or_team', {})
-        
-        for dtype, targets in dept_team_targets.items():
-            # Iterate targets directly
-            for t_name_key, t_data in targets.items(): # Renamed t_name to t_name_key to avoid confusion with t_data['name']
-                t_name = t_data.get('name', '')
-                mapped_name = t_data.get('mapped_name', '')
-                
-                # Filter out if ID is 0 (unmapped) - interpreting "list team hay dept là 0" as ID=0
-                if not mapped_name:
-                    continue
+        # Case 1: Company Target Tree
+        if node_type == 'company':
+            co_name = node_data.get('name', top_key)
+            co_node = {'label': f"🏢 {co_name}", 'children': []}
+            
+            # Dept/Team types
+            dept_team_targets = node_data.get('target_dept_or_team', {})
+            
+            for dtype, targets in dept_team_targets.items():
+                # Iterate targets directly
+                for t_name_key, t_data in targets.items(): 
+                    t_name = t_data.get('name', '')
+                    mapped_name = t_data.get('mapped_name', '')
+                    
+                    if not mapped_name:
+                        continue
 
-                # Format: [Mapped Name] Target Name
-                # User request: [Đội Bán hàng - CSKH] Tối ưu hóa...
-                label_name = f"[{mapped_name}] {t_name}"
+                    # Format: [Mapped Name] Target Name
+                    label_name = f"[{mapped_name}] {t_name}"
+                    
+                    target_label = f"🎯 {label_name}"
+                    t_node = {'label': target_label, 'children': []}
+                    
+                    goals = t_data.get('goals', {})
+                    for g_id, g_data in goals.items():
+                        g_node = {'label': f"📝 {g_data['name']}", 'children': []}
+                        
+                        krs = g_data.get('krs', {})
+                        for k_id, k_data in krs.items():
+                            val = k_data.get('value', 0)
+                            top = k_data.get('top_value', 0)
+                            unit = k_data.get('unit', '')
+                            
+                            try:
+                                v_float = float(val) if val else 0.0
+                                t_float = float(top) if top else 0.0
+                            except:
+                                v_float, t_float = 0.0, 0.0
+                            
+                            stats = ""
+                            if v_float != 0 or t_float != 0:
+                                stats = f" ({val}/{top} {unit})"
+                                
+                            kr_label = f"🔹 {k_data['name']}{stats}"
+                            g_node['children'].append({'label': kr_label})
+                        
+                        t_node['children'].append(g_node)
+                    
+                    co_node['children'].append(t_node)
+            
+            root_children.append(co_node)
+            
+        # Case 2: Personal Goals Branch
+        elif node_type == 'personal':
+            # PERSONAL -> [Group Name] -> Goal -> KR
+            p_node = {'label': f"👤 {node_data.get('name', 'PERSONAL')}", 'children': []}
+            
+            groups = node_data.get('groups', {})
+            for group_name, goals in groups.items():
+                group_node = {'label': f"📂 {group_name}", 'children': []}
                 
-                target_label = f"🎯 {label_name}"
-                t_node = {'label': target_label, 'children': []}
-                
-                goals = t_data.get('goals', {})
                 for g_id, g_data in goals.items():
                     g_node = {'label': f"📝 {g_data['name']}", 'children': []}
                     
@@ -762,14 +845,25 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
                         val = k_data.get('value', 0)
                         top = k_data.get('top_value', 0)
                         unit = k_data.get('unit', '')
-                        kr_label = f"🔹 {k_data['name']} ({val}/{top} {unit})"
+                        
+                        try:
+                            v_float = float(val) if val else 0.0
+                            t_float = float(top) if top else 0.0
+                        except:
+                            v_float, t_float = 0.0, 0.0
+                        
+                        stats = ""
+                        if v_float != 0 or t_float != 0:
+                            stats = f" ({val}/{top} {unit})"
+                            
+                        kr_label = f"🔹 {k_data['name']}{stats}"
                         g_node['children'].append({'label': kr_label})
                     
-                    t_node['children'].append(g_node)
+                    group_node['children'].append(g_node)
                 
-                co_node['children'].append(t_node)
-        
-        root_children.append(co_node)
+                p_node['children'].append(group_node)
+            
+            root_children.append(p_node)
         
     return {'label': 'ROOT', 'children': root_children}
 

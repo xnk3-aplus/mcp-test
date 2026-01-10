@@ -89,7 +89,6 @@ ngrok http 8000
 
 | Tool | Description | Tags | Auto-Run |
 |------|-------------|------|----------|
-| `get_full_okr_data` | Lấy dữ liệu OKR chi tiết. **Param:** `cycle` (optional) - Tên chu kỳ (e.g. "Q1 2024") hoặc thời gian (e.g. "11/2024"). Default: Current. | `okr`, `data`, `report` | ✅ Yes |
 | `get_okr_tree` | Lấy cây mục tiêu OKR. **Param:** `cycle` (optional) - Tên chu kỳ hoặc thời gian (e.g. "2024-11"). Default: Current. | `okr`, `tree`, `visualization` | ✅ Yes |
 
 ## 📄 License
