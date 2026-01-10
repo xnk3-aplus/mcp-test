@@ -579,7 +579,7 @@ def _get_full_data_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -
                         'checkin_name': c.get('name', ''),
                         'checkin_since': convert_time(checkin_ts),
                         'checkin_since_timestamp': checkin_ts,
-                        'cong_viec_tiep_theo': extract_form_value(c_form, 'Công việc tiếp theo') or extract_form_value(c_form, 'Mô tả tiến độ') or '', 
+                        'cong_viec_tiep_theo':  extract_form_value(c_form, 'Công việc tiếp theo') or extract_form_value(c_form, 'Mô tả tiến độ') or extract_form_value(c_form, 'Những công việc quan trọng, trọng yếu, điểm nhấn thực hiện trong Tuần để đạt được kết quả (không phải công việc giải quyết hàng ngày)') or '', 
                         'checkin_target_name': '', 
                         'checkin_kr_current_value': c.get('current_value', 0),
                         'checkin_user_id': str(c.get('user_id', ''))
