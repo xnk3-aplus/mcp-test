@@ -596,6 +596,49 @@ def _get_full_data_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -
 
 
 
+def _get_all_checkins_logic(ctx: Optional[Context] = None, cycle: str = None) -> List[Dict]:
+    """Logic for get_all_checkins"""
+    full_data = _get_full_data_logic(ctx, cycle)
+    
+    # Check for error
+    if isinstance(full_data, list) and len(full_data) == 1 and "error" in full_data[0]:
+        return full_data
+
+    simplified_checkins = []
+    
+    for row in full_data:
+        # Filter: Must have a checkin_id (meaning it's a real check-in row, not just a goal placeholder)
+        if row.get('checkin_id'):
+            simplified_checkins.append({
+                'checkin_name': row.get('checkin_name', ''),
+                'checkin_since': row.get('checkin_since', ''),
+                'goal_user_name': row.get('goal_user_name', ''),
+                'kr_name': row.get('kr_name', ''),
+                'cong_viec_tiep_theo': row.get('cong_viec_tiep_theo', ''),
+                'checkin_kr_current_value': row.get('checkin_kr_current_value', 0)
+            })
+            
+    return simplified_checkins
+
+@mcp.tool(
+    name="get_all_checkins",
+    description="Lấy danh sách tất cả check-in của mọi người dùng với các thông tin chi tiết: tên, thời gian, người dùng, KR, công việc tiếp theo, điểm số.",
+    tags={"okr", "checkin", "report"},
+    annotations={"readOnlyHint": True}
+)
+def get_all_checkins(ctx: Context, cycle: str = None) -> List[Dict]:
+    """
+    Get all check-ins with specific fields:
+    - checkin_name
+    - checkin_since
+    - goal_user_name
+    - kr_name
+    - cong_viec_tiep_theo
+    - checkin_kr_current_value
+    """
+    return _get_all_checkins_logic(ctx, cycle)
+
+
 def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dict:
     """Build hierarchical OKR tree using robust target parsing"""
     try:

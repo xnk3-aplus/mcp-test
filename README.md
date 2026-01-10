@@ -89,6 +89,7 @@ ngrok http 8000
 
 | Tool | Description | Tags | Auto-Run |
 |------|-------------|------|----------|
+| `get_all_checkins` | Lấy danh sách check-in chi tiết (Tên, Ngày, User, KR, Next Action, Value). | `okr`, `checkin`, `report` | ✅ Yes |
 | `get_okr_tree` | Lấy cây mục tiêu OKR. **Param:** `cycle` (optional) - Tên chu kỳ hoặc thời gian (e.g. "2024-11"). Default: Current. | `okr`, `tree`, `visualization` | ✅ Yes |
 
 ## 📄 License
