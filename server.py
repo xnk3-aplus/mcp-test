@@ -624,8 +624,6 @@ def _get_checkins_from_table(ctx: Optional[Context] = None, cycle: str = None) -
         payload = {
             'access_token_v2': TABLE_ACCESS_TOKEN, 
             'table_id': 81,
-            'page': page, 
-            'limit': 100
         }
         try:
             response = _make_request(url, payload, f"fetching table page {page}")
@@ -719,7 +717,7 @@ def _get_all_checkins_logic(ctx: Optional[Context] = None, cycle: str = None) ->
 
 @mcp.tool(
     name="get_all_checkins",
-    description="Lấy danh sách tất cả check-in của mọi người dùng với các thông tin chi tiết: tên, thời gian, người dùng, KR, công việc tiếp theo, điểm số.",
+    description="Lấy danh sách tất cả check-in của mọi người dùng với các thông tin chi tiết: tên, thời gian, người dùng, KR, công việc tiếp theo, điểm số, điểm next action.",
     tags={"okr", "checkin", "report"},
     annotations={"readOnlyHint": True}
 )
@@ -732,6 +730,7 @@ def get_all_checkins(ctx: Context, cycle: str = None) -> List[Dict]:
     - kr_name
     - cong_viec_tiep_theo
     - checkin_kr_current_value
+    - next_action_score
     """
     return _get_all_checkins_logic(ctx, cycle)
 
