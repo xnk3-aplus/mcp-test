@@ -33,6 +33,7 @@ A powerful Model Context Protocol (MCP) server for analyzing OKR (Objectives and
    ```env
    GOAL_ACCESS_TOKEN=your_goal_token_here
    ACCOUNT_ACCESS_TOKEN=your_account_token_here
+   TABLE_ACCESS_TOKEN=your_table_token_here
    ```
 
 ## 🚀 Deployment Options

@@ -14,6 +14,7 @@ load_dotenv()
 # Tokens from environment
 GOAL_ACCESS_TOKEN = os.getenv('GOAL_ACCESS_TOKEN')
 ACCOUNT_ACCESS_TOKEN = os.getenv('ACCOUNT_ACCESS_TOKEN')
+TABLE_ACCESS_TOKEN = os.getenv('TABLE_ACCESS_TOKEN', '5654~iP-VCfH0Oh_ZGLthwfMDzTskE_7RVCEuGDAZKg6YmlIrCzS1sKyUCv9YIivHcTV7rEgC473hbTx7Io6_Ho0eItYkxIXp0SXI3qQQHAhj9QTrlFEkggRCz0zQBxR-AUpQHp8wMgEgwJYFeR1BNeBmYg')
 # GG_SCRIPT_URL removed as requested
 
 import time
@@ -92,6 +93,7 @@ def get_cycle_list() -> List[Dict]:
                     end_time = datetime.fromtimestamp(float(cycle['end_time']))
                     quarterly_cycles.append({
                         'name': cycle['name'],
+                        'id': str(cycle.get('id', '')),
                         'path': cycle['path'],
                         'start_time': start_time,
                         'end_time': end_time,
@@ -596,13 +598,108 @@ def _get_full_data_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -
 
 
 
-def _get_all_checkins_logic(ctx: Optional[Context] = None, cycle: str = None) -> List[Dict]:
-    """Logic for get_all_checkins"""
-    full_data = _get_full_data_logic(ctx, cycle)
+def _get_checkins_from_table(ctx: Optional[Context] = None, cycle: str = None) -> List[Dict]:
+    """Fetch checkins from Base Table 81 filtered by cycle_id"""
     
-    # Check for error
-    if isinstance(full_data, list) and len(full_data) == 1 and "error" in full_data[0]:
-        return full_data
+    # 1. Resolve Cycle to get ID
+    cycle_info = get_cycle_info(cycle)
+    if not cycle_info:
+        if ctx: ctx.error("Could not find any cycle info")
+        return [{"error": "Cycle not found"}]
+        
+    cycle_id = str(cycle_info.get('id', ''))
+    cycle_name = cycle_info.get('name', '')
+    
+    if ctx: ctx.info(f"Fetching checkins for cycle '{cycle_name}' (ID: {cycle_id}) from Table 81...")
+    
+    # 2. Fetch User Map
+    user_map = get_user_names()
+    
+    # 3. Fetch Table Records
+    url = "https://table.base.vn/extapi/v1/table/records"
+    all_records = []
+    
+    # Pagination
+    for page in range(1, 100): # Safety limit
+        payload = {
+            'access_token_v2': TABLE_ACCESS_TOKEN, 
+            'table_id': 81,
+            'page': page, 
+            'limit': 100
+        }
+        try:
+            response = _make_request(url, payload, f"fetching table page {page}")
+            data = response.json()
+            records = data.get('data', [])
+            
+            if not records:
+                break
+                
+            all_records.extend(records)
+            
+            if len(records) < 100:
+                break
+        except Exception as e:
+            if ctx: ctx.error(f"Error fetching table page {page}: {e}")
+            break
+            
+    if not all_records:
+        if ctx: ctx.info(f"No records found in Table 81.")
+        return []
+
+    # 4. Filter and Map
+    simplified_checkins = []
+    
+    for r in all_records:
+        vals = r.get('vals', {})
+        
+        # 'f1' is cycle_id
+        r_cycle_id = str(vals.get('f1', ''))
+        
+        # Filter by Cycle ID
+        if r_cycle_id == cycle_id:
+            # Map Fields similar to get_records.py
+            # '_name' -> checkin_name
+            # 'f1' -> cycle_id
+            # 'f2' -> next_action_score
+            # 'f4' -> cong_viec_tiep_theo
+            # 'f5' -> checkin_id
+            # 'f7' -> checkin_since
+            # 'f8' -> checkin_target_name
+            # 'f9' -> checkin_kr_current_value
+            # 'f10' -> checkin_user_id
+            # 'f11' -> kr_name
+            
+            u_id = str(vals.get('f10', ''))
+            user_name = user_map.get(u_id, f"User {u_id}") if u_id else ""
+            
+            item = {
+                'checkin_name': r.get('name', ''), # _name
+                'checkin_since': vals.get('f7', ''),
+                'goal_user_name': user_name,
+                'kr_name': vals.get('f11', ''),
+                'cong_viec_tiep_theo': vals.get('f4', ''),
+                'checkin_kr_current_value': vals.get('f9', 0),
+                # Extra fields if needed for debugging or context
+                'checkin_id': vals.get('f5', ''),
+                'next_action_score': vals.get('f2', '')
+            }
+            simplified_checkins.append(item)
+            
+    if ctx: ctx.info(f"Found {len(simplified_checkins)} checkins for cycle {cycle_name}")
+    return simplified_checkins
+
+
+def _get_all_checkins_logic(ctx: Optional[Context] = None, cycle: str = None) -> List[Dict]:
+    """Logic for get_all_checkins - switched to Table Source"""
+    return _get_checkins_from_table(ctx, cycle)
+
+    # OLD LOGIC DEPRECATED
+    # full_data = _get_full_data_logic(ctx, cycle)
+    # 
+    # # Check for error
+    # if isinstance(full_data, list) and len(full_data) == 1 and "error" in full_data[0]:
+    #     return full_data
 
     simplified_checkins = []
     
@@ -655,6 +752,9 @@ def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dic
 
         # 2. Fetch User Goals & KRs
         goals, krs = get_goals_and_krs(cycle_path, ctx)
+        
+        # 2b. Fetch User Map
+        user_map = get_user_names()
         
         # 3. Build lookup maps
         # Map: KR ID (which acts as Dept/Team Target ID in API relation) -> List of User Goals
@@ -722,11 +822,14 @@ def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dic
                     krs_dict = {}
                     for k in g_krs:
                         k_id = str(k.get('id', ''))
+                        u_id = str(k.get('user_id', ''))
+                        u_name = user_map.get(u_id, "Unknown")
                         krs_dict[k_id] = {
                             'name': k.get('name', ''),
                             'value': k.get('current_value', 0),
                             'top_value': k.get('goal', 0),
-                            'unit': k.get('unit', '')
+                            'unit': k.get('unit', ''),
+                            'owner': u_name
                         }
                     
                     goals_dict[g_id] = {
@@ -782,11 +885,14 @@ def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dic
                 krs_dict = {}
                 for k in g_krs:
                     k_id = str(k.get('id', ''))
+                    u_id = str(k.get('user_id', ''))
+                    u_name = user_map.get(u_id, "Unknown")
                     krs_dict[k_id] = {
                         'name': k.get('name', ''),
                         'value': k.get('current_value', 0),
                         'top_value': k.get('goal', 0),
-                        'unit': k.get('unit', '')
+                        'unit': k.get('unit', ''),
+                        'owner': u_name
                     }
                 
                 personal_groups[group_name][g_id] = {
@@ -862,7 +968,9 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
                             if v_float != 0 or t_float != 0:
                                 stats = f" ({val}/{top} {unit})"
                                 
-                            kr_label = f"🔹 {k_data['name']}{stats}"
+                            owner = k_data.get('owner', '')
+                            owner_str = f" - 👤 {owner}" if owner else ""
+                            kr_label = f"🔹 {k_data['name']}{stats}{owner_str}"
                             g_node['children'].append({'label': kr_label})
                         
                         t_node['children'].append(g_node)
@@ -899,7 +1007,9 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
                         if v_float != 0 or t_float != 0:
                             stats = f" ({val}/{top} {unit})"
                             
-                        kr_label = f"🔹 {k_data['name']}{stats}"
+                        owner = k_data.get('owner', '')
+                        owner_str = f" - 👤 {owner}" if owner else ""
+                        kr_label = f"🔹 {k_data['name']}{stats}{owner_str}"
                         g_node['children'].append({'label': kr_label})
                     
                     group_node['children'].append(g_node)
