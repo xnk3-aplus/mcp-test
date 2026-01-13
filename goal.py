@@ -26,18 +26,53 @@ MAX_PAGES_KRS = 50
 MAX_PAGES_CHECKINS = 100
 
 # Access Tokens
-GOAL_ACCESS_TOKEN = os.getenv('GOAL_ACCESS_TOKEN')
-ACCOUNT_ACCESS_TOKEN = os.getenv('ACCOUNT_ACCESS_TOKEN')
+GOAL_ACCESS_TOKEN = '5654~hCB7RnBKitN8QX05KXRzLNZ7QK2mOp9z2CdVE7d3pqfDybfJooMUR8gwitEcTjegb7P7-03-Wu1DCDGg3zgg1a0sPyldlgcPHgE1xyjoxTHLi4UsYtBKHnS_X6GHQlr1kTM0YaOSaOpulDhFtxODjg'
+ACCOUNT_ACCESS_TOKEN = '5654~1NivIHKOvJ3oXRDuNDIp8Q3FTUWZQyVJauBRmW0QFi9TrG5C3b5e-HKeYdqnstzWuedgz6OYQFQevkeRCkEQ0poisrM3zzIWllbp_Bvs2HyrWzed5hlMH5grj2H6cpZPsyQx5mlxjtcJxqRVMef4G8_ct9TKiFb86NtCFUzD9Eo'
 
 hcm_tz = pytz.timezone('Asia/Ho_Chi_Minh')
 user_id_to_name_map = {}
+
+# Department and Team ID Mappings
+DEPT_ID_MAPPING = {
+    "450": "BP Thị Trường",
+    "451": "BP Cung Ứng",
+    "452": "BP Nhân Sự Hành Chính",
+    "453": "BP Tài Chính Kế Toán",
+    "542": "Khối hiện trường (các vùng miền)",
+    "651": "Ban Giám Đốc",
+    "652": "BP R&D, Business Line mới"
+}
+
+TEAM_ID_MAPPING = {
+    "307": "Đội Bán hàng - Chăm sóc khách hàng",
+    "547": "Đội Nguồn Nhân Lực",
+    "548": "Đội Kế toán - Quản trị",
+    "1032": "Team Hoàn Thuế VAT (Nhóm)",
+    "1128": "Đội Thanh Hóa (Miền Bắc)",
+    "1129": "Đội Quy Nhơn",
+    "1133": "Đội Hành chính - Số hóa",
+    "1134": "Team Thực tập sinh - Thử nghiệm mới (Nhóm)",
+    "1138": "Đội Marketing - AI",
+    "1141": "Đội Tài chính - Đầu tư",
+    "1148": "Đội Logistic quốc tế - Thị trường",
+    "546": "Đội Mua hàng - Out source",
+    "1130": "Đội Daknong",
+    "1131": "Đội KCS VT-SG",
+    "1135": "Đội Chuỗi cung ứng nội địa - Thủ tục XNK",
+    "1132": "Đội Văn hóa - Chuyển hóa",
+    "1136": "Đội Chất lượng - Sản phẩm",
+    "1137": "Team 1 (Nhóm 1)",
+    "1139": "Đội Data - Hệ thống - Số hóa",
+    "1375": "AGILE _ DỰ ÁN 1"
+}
+
 
 def load_user_mapping():
     """Tải mapping user_id -> name từ API Account"""
     global user_id_to_name_map
     try:
         url = "https://account.base.vn/extapi/v1/users"
-        payload = {'access_token': ACCOUNT_ACCESS_TOKEN}
+        payload = {'access_token_v2': ACCOUNT_ACCESS_TOKEN}
         headers = {}
         
         response = requests.post(url, headers=headers, data=payload, timeout=30)
@@ -487,19 +522,28 @@ class GoalAPIClient:
         self.account_token = account_token
 
     def _make_request(self, url: str, data: Dict, description: str = "") -> requests.Response:
-        """Make HTTP request with error handling"""
-        try:
-            response = requests.post(url, data=data, timeout=REQUEST_TIMEOUT)
-            response.raise_for_status()
-            return response
-        except requests.exceptions.RequestException as e:
-            print(f"Error {description}: {e}")
-            raise
+        """Make HTTP request with error handling and retry logic"""
+        max_retries = 3
+        backoff_factor = 1  # seconds
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.post(url, data=data, timeout=REQUEST_TIMEOUT)
+                response.raise_for_status()
+                return response
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries:
+                    wait_time = backoff_factor * (2 ** attempt)
+                    print(f"⚠️ Error {description}: {e}. Retrying in {wait_time}s ({attempt + 1}/{max_retries})...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"❌ Failed {description} after {max_retries + 1} attempts: {e}")
+                    raise
 
     def get_filtered_members(self) -> pd.DataFrame:
         """Get filtered members from account API"""
         url = "https://account.base.vn/extapi/v1/group/get"
-        data = {"access_token": self.account_token, "path": "nvvanphong"}
+        data = {'access_token_v2': self.account_token, "path": "nvvanphong"}
         
         response = self._make_request(url, data, "fetching account members")
         response_data = response.json()
@@ -522,7 +566,7 @@ class GoalAPIClient:
     def get_cycle_list(self) -> List[Dict]:
         """Get list of quarterly cycles"""
         url = "https://goal.base.vn/extapi/v1/cycle/list"
-        data = {'access_token': self.goal_token}
+        data = {'access_token_v2': self.goal_token}
 
         response = self._make_request(url, data, "fetching cycle list")
         data = response.json()
@@ -547,7 +591,7 @@ class GoalAPIClient:
     def get_account_users(self) -> pd.DataFrame:
         """Get users from Account API"""
         url = "https://account.base.vn/extapi/v1/users"
-        data = {"access_token": self.account_token}
+        data = {'access_token_v2': self.account_token}
 
         response = self._make_request(url, data, "fetching account users")
         json_response = response.json()
@@ -565,7 +609,7 @@ class GoalAPIClient:
     def get_target_sub_goal_ids(self, target_id: str) -> List[str]:
         """Fetch sub-goal IDs for a specific target"""
         url = "https://goal.base.vn/extapi/v1/target/get"
-        data = {'access_token': self.goal_token, 'id': str(target_id)}
+        data = {'access_token_v2': self.goal_token, 'id': str(target_id)}
         
         try:
             # Removed separate print to reduce noise, handled in loop or debug if needed
@@ -584,13 +628,32 @@ class GoalAPIClient:
     def get_goals_data(self, cycle_path: str) -> pd.DataFrame:
         """Get goals data from API"""
         url = "https://goal.base.vn/extapi/v1/cycle/get.full"
-        data = {'access_token': self.goal_token, 'path': cycle_path}
+        data = {'access_token_v2': self.goal_token, 'path': cycle_path}
 
         response = self._make_request(url, data, "fetching goals data")
         data = response.json()
 
+        # Helper function to extract form values
+        def extract_form_value(form_array, field_name):
+            """Extract value from form array by field name"""
+            if not form_array or not isinstance(form_array, list):
+                return ""
+            for item in form_array:
+                if item.get('name') == field_name:
+                    return item.get('value', item.get('display', ""))
+            return ""
+
         goals_data = []
         for goal in data.get('goals', []):
+            form_data = goal.get('form', [])
+            dept_id = str(goal.get('dept_id', '0'))
+            team_id = str(goal.get('team_id', '0'))
+            
+            # Map dept_id and team_id to names (empty if ID is 0)
+            # Handle both string "0" and actual 0 value
+            dept_name = "" if (dept_id == "0" or dept_id == 0 or not dept_id) else DEPT_ID_MAPPING.get(dept_id, "")
+            team_name = "" if (team_id == "0" or team_id == 0 or not team_id) else TEAM_ID_MAPPING.get(team_id, "")
+            
             goals_data.append({
                 'goal_id': str(goal.get('id')),
                 'goal_name': goal.get('name', 'Unknown Goal'),
@@ -599,6 +662,15 @@ class GoalAPIClient:
                 'goal_current_value': goal.get('current_value', 0),
                 'goal_user_id': str(goal.get('user_id', '')),
                 'goal_target_id': str(goal.get('target_id', '')) if goal.get('target_id') else '',
+                # Extract dept_id and team_id from goal
+                'dept_id': dept_id,
+                'team_id': team_id,
+                'dept_name': dept_name,
+                'team_name': team_name,
+                # Extract 3 form fields
+                'Mức độ đóng góp vào mục tiêu công ty': extract_form_value(form_data, 'Mức độ đóng góp vào mục tiêu công ty'),
+                'Mức độ ưu tiên mục tiêu của Quý': extract_form_value(form_data, 'Mức độ ưu tiên mục tiêu của Quý'),
+                'Tính khó/tầm ảnh hưởng đến hệ thống': extract_form_value(form_data, 'Tính khó/tầm ảnh hưởng đến hệ thống'),
             })
 
         return pd.DataFrame(goals_data)
@@ -606,7 +678,7 @@ class GoalAPIClient:
     def parse_targets_data(self, cycle_path: str) -> pd.DataFrame:
         """Parse targets data from API to create target mapping"""
         url = "https://goal.base.vn/extapi/v1/cycle/get.full"
-        data = {'access_token': self.goal_token, 'path': cycle_path}
+        data = {'access_token_v2': self.goal_token, 'path': cycle_path}
 
         response = self._make_request(url, data, "fetching targets data")
         response_data = response.json()
@@ -626,6 +698,22 @@ class GoalAPIClient:
                     'name': t.get('name', '')
                 }
         
+        # Helper to extract form data matching server.py logic
+        def extract_form_data(target_obj):
+            # strict columns requested by user
+            form_data = {
+                "Mức độ đóng góp vào mục tiêu công ty": "",
+                "Mức độ ưu tiên mục tiêu của Quý": "",
+                "Tính khó/tầm ảnh hưởng đến hệ thống": ""
+            }
+            if 'form' in target_obj and isinstance(target_obj['form'], list):
+                for item in target_obj['form']:
+                    key = item.get('name')
+                    val = item.get('value')
+                    if key:
+                        form_data[key] = val
+            return form_data
+
         # 2. Iterate ALL targets to find relevant ones (including detached Dept/Team targets)
         # We will collect valid targets first
         collected_targets = []
@@ -635,35 +723,62 @@ class GoalAPIClient:
             scope = t.get('scope', '')
             parent_id = str(t.get('parent_id') or '')
             
+        # 2. Iterate ALL targets to find relevant ones
+        # We use a dictionary to ensure uniqueness and maximize coverage
+        targets_map = {}
+        
+        for t in raw_targets:
+            t_id = str(t.get('id', ''))
+            scope = t.get('scope', '')
+            parent_id = str(t.get('parent_id') or '')
+            
+            # Common extraction logic
+            def create_base_data(obj, parent_info=None):
+                data = {
+                    'target_id': str(obj.get('id', '')),
+                    'target_name': obj.get('name', ''),
+                    'target_scope': obj.get('scope', ''),
+                    'target_company_id': parent_info['id'] if parent_info else None,
+                    'target_company_name': parent_info['name'] if parent_info else None,
+                    'target_dept_id': None, 'target_dept_name': None,
+                    'target_team_id': None, 'target_team_name': None,
+                    'team_id': str(obj.get('team_id', '')),
+                    'dept_id': str(obj.get('dept_id', ''))
+                }
+                data.update(extract_form_data(obj))
+                return data
+
             # Case A: Detached Dept/Team Target linked to Company Parent
             if scope in ['dept', 'team'] and parent_id in company_targets_map:
                 parent = company_targets_map[parent_id]
-                target_data = {
-                    'target_id': t_id,
-                    'target_company_id': parent['id'],
-                    'target_company_name': parent['name'],
-                    'target_name': t.get('name', ''),
-                    'target_scope': scope,
-                    'target_dept_id': None, 'target_dept_name': None,
-                    'target_team_id': None, 'target_team_name': None
-                }
-                collected_targets.append(target_data)
+                target_data = create_base_data(t, parent)
+                targets_map[t_id] = target_data
 
-            # Case B: Company Target (inspect its cached_objs as before)
+            # Case B: Company Target (inspect its cached_objs)
             elif scope == 'company':
+                # Also add the company target itself if not present
+                if t_id not in targets_map:
+                     targets_map[t_id] = create_base_data(t, {'id': t_id, 'name': t.get('name', '')})
+
                 # Process cached_objs
                 if 'cached_objs' in t and isinstance(t['cached_objs'], list):
                     for kr in t['cached_objs']:
-                        sub_data = {
-                            'target_id': str(kr.get('id', '')),
-                            'target_company_id': t_id,
-                            'target_company_name': t.get('name', ''),
-                            'target_name': kr.get('name', ''),
-                            'target_scope': kr.get('scope', ''),
-                            'target_dept_id': None, 'target_dept_name': None,
-                            'target_team_id': None, 'target_team_name': None
-                        }
-                        collected_targets.append(sub_data)
+                        kr_id = str(kr.get('id', ''))
+                        parent_info = {'id': t_id, 'name': t.get('name', '')}
+                        sub_data = create_base_data(kr, parent_info)
+                        targets_map[kr_id] = sub_data
+            
+            # Case C: Catch-all for any other target not processed yet
+            elif t_id not in targets_map:
+                # Try to resolve parent name if possible
+                parent_info = None
+                if parent_id and parent_id in company_targets_map:
+                    parent_info = company_targets_map[parent_id]
+                
+                target_data = create_base_data(t, parent_info)
+                targets_map[t_id] = target_data
+        
+        collected_targets = list(targets_map.values())
 
         # 3. Post-process: Fill columns and fetch sub-goals
         for target_data in collected_targets:
@@ -690,7 +805,7 @@ class GoalAPIClient:
         all_krs = []
         
         for page in range(1, MAX_PAGES_KRS + 1):
-            data = {"access_token": self.goal_token, "path": cycle_path, "page": page}
+            data = {'access_token_v2': self.goal_token, "path": cycle_path, "page": page}
 
             response = self._make_request(url, data, f"loading KRs at page {page}")
             response_data = response.json()
@@ -721,7 +836,7 @@ class GoalAPIClient:
         all_checkins = []
         
         for page in range(1, MAX_PAGES_CHECKINS + 1):
-            data = {"access_token": self.goal_token, "path": cycle_path, "page": page}
+            data = {'access_token_v2': self.goal_token, "path": cycle_path, "page": page}
 
             response = self._make_request(url, data, f"loading checkins at page {page}")
             response_data = response.json()
@@ -1130,6 +1245,30 @@ class OKRAnalysisSystem:
             # Thêm cột trống nếu không có target data
             for col in ['target_company_name', 'target_dept_name', 'target_team_name']:
                 self.final_df[col] = None
+        
+        # User constraint: Ensure these columns ALWAYS exist and are never NULL
+        required_non_null_cols = [
+            "Mức độ đóng góp vào mục tiêu công ty",
+            "Mức độ ưu tiên mục tiêu của Quý",
+            "Tính khó/tầm ảnh hưởng đến hệ thống",
+            "team_id",
+            "dept_id",
+            "dept_name",
+            "team_name"
+        ]
+        
+        for col in required_non_null_cols:
+            if col not in self.final_df.columns:
+                self.final_df[col] = ""
+            else:
+                self.final_df[col] = self.final_df[col].fillna("")
+        
+        # Remove duplicate columns with _target suffix (keep only goal-level form fields)
+        cols_to_drop = [col for col in self.final_df.columns if col.endswith('_target') and 
+                       any(form_field in col for form_field in required_non_null_cols)]
+        if cols_to_drop:
+            print(f"  Dropping duplicate target columns: {len(cols_to_drop)} columns")
+            self.final_df = self.final_df.drop(columns=cols_to_drop)
 
         self.final_df = DataProcessor.clean_final_data(self.final_df)
         
@@ -2030,9 +2169,10 @@ def get_goal_data(employee_name):
         cycles = analyzer.get_cycle_list()
         if not cycles: return None
         
-        # Chọn chu kỳ quí 4/2025
-        target_cycle_path = 'quy-iv2025-1174'
-        selected_cycle = next((c for c in cycles if c['path'] == target_cycle_path), cycles[0])
+        # Tự động chọn chu kỳ mới nhất (do API không trả về start_date/end_date đầy đủ)
+        selected_cycle = cycles[0]
+        # print(f"Selected cycle: {selected_cycle['name']}")
+        
         analyzer.checkin_path = selected_cycle['path']
         analyzer.load_and_process_data()
         
@@ -2072,6 +2212,13 @@ def get_goal_data(employee_name):
                 # Lọc goal của user
                 user_goals = df_goals[df_goals['goal_user_id'] == str(employee_user_id)].copy()
                 
+                # Fetch KRs data
+                df_krs = analyzer.api_client.get_krs_data(analyzer.checkin_path)
+                user_krs = pd.DataFrame()
+                if not df_krs.empty:
+                    # Filter KRs for this user (optional, but safer to match by goal_id later)
+                   user_krs = df_krs.copy() # Match by goal_id is safer
+
                 # Tính toán fraction_of_time
                 # Giả sử cycle là quý, lấy start_time từ cycle info
                 cycle_start = None
@@ -2114,11 +2261,26 @@ def get_goal_data(employee_name):
                         speed = (percent_complete / 100.0) / fraction_of_time
                     else:
                         speed = 0
-                        
+                    
+                    # Find KRs for this goal
+                    goal_id = str(row.get('goal_id'))
+                    filtered_krs = []
+                    if not user_krs.empty:
+                        # Ensure string comparison
+                        mask = user_krs['goal_id'].astype(str) == goal_id
+                        krs_for_goal = user_krs[mask]
+                        for _, kr_row in krs_for_goal.iterrows():
+                            filtered_krs.append({
+                                'name': kr_row.get('kr_name', 'Unknown KR'),
+                                'progress': float(kr_row.get('kr_current_value', 0))
+                            })
+
                     goals_list.append({
                         'name': row.get('goal_name', 'Unknown'),
                         'current_value': current_val,
-                        'speed': speed
+                        'speed': speed,
+                        'sub_goals': filtered_krs,
+                        'start_date': str(row.get('goal_since', ''))
                     })
 
         return {

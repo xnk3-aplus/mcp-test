@@ -1,6 +1,7 @@
 from fastmcp import FastMCP, Context
-
-from typing import Dict, List, Optional
+from fastmcp.exceptions import ToolError
+from typing import Dict, List, Optional, Annotated, Any
+from pydantic import BaseModel, Field
 import os
 import requests
 import pandas as pd
@@ -14,7 +15,7 @@ load_dotenv()
 # Tokens from environment
 GOAL_ACCESS_TOKEN = os.getenv('GOAL_ACCESS_TOKEN')
 ACCOUNT_ACCESS_TOKEN = os.getenv('ACCOUNT_ACCESS_TOKEN')
-TABLE_ACCESS_TOKEN = os.getenv('TABLE_ACCESS_TOKEN', '5654~iP-VCfH0Oh_ZGLthwfMDzTskE_7RVCEuGDAZKg6YmlIrCzS1sKyUCv9YIivHcTV7rEgC473hbTx7Io6_Ho0eItYkxIXp0SXI3qQQHAhj9QTrlFEkggRCz0zQBxR-AUpQHp8wMgEgwJYFeR1BNeBmYg')
+TABLE_ACCESS_TOKEN = os.getenv('TABLE_ACCESS_TOKEN')
 # GG_SCRIPT_URL removed as requested
 
 import time
@@ -72,7 +73,19 @@ TEAM_ID_MAPPING = {
     "1375": "AGILE _ DỰ ÁN 1"
 }
 
-# Create FastMCP server
+# --- PYDANTIC MODELS FOR STRUCTURED OUTPUT ---
+class CheckinResult(BaseModel):
+    """Mô hình dữ liệu cho một bản ghi Check-in"""
+    checkin_name: str = Field(description="Tên hoặc tiêu đề của lần check-in")
+    checkin_since: str = Field(description="Thời gian check-in đã format")
+    goal_user_name: str = Field(description="Tên người thực hiện check-in")
+    kr_name: str = Field(description="Tên Key Result liên quan")
+    cong_viec_tiep_theo: str = Field(description="Kế hoạch hoặc công việc tiếp theo")
+    checkin_kr_current_value: float = Field(description="Giá trị KR tại thời điểm check-in")
+    checkin_id: Optional[str] = Field(None, description="ID định danh check-in")
+    next_action_score: Optional[str] = Field(None, description="Điểm đánh giá hành động tiếp theo")
+
+# --- SERVER INITIALIZATION ---
 mcp = FastMCP("OKR Analysis Server")
 
 # Helper functions
@@ -598,14 +611,13 @@ def _get_full_data_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -
 
 
 
-def _get_checkins_from_table(ctx: Optional[Context] = None, cycle: str = None) -> List[Dict]:
-    """Fetch checkins from Base Table 81 filtered by cycle_id"""
+def _get_checkins_from_table(ctx: Optional[Context] = None, cycle: str = None) -> List[CheckinResult]:
+    """Fetch checkins from Base Table 81 filtered by cycle_id, returns Pydantic models"""
     
     # 1. Resolve Cycle to get ID
     cycle_info = get_cycle_info(cycle)
     if not cycle_info:
-        if ctx: ctx.error("Could not find any cycle info")
-        return [{"error": "Cycle not found"}]
+        raise ToolError("Could not find any OKR cycle matching the request.")
         
     cycle_id = str(cycle_info.get('id', ''))
     cycle_name = cycle_info.get('name', '')
@@ -621,9 +633,11 @@ def _get_checkins_from_table(ctx: Optional[Context] = None, cycle: str = None) -
     
     # Pagination
     for page in range(1, 100): # Safety limit
+        if ctx: ctx.report_progress(page, 100)  # Progress reporting
         payload = {
             'access_token_v2': TABLE_ACCESS_TOKEN, 
             'table_id': 81,
+            'page': page
         }
         try:
             response = _make_request(url, payload, f"fetching table page {page}")
@@ -638,116 +652,101 @@ def _get_checkins_from_table(ctx: Optional[Context] = None, cycle: str = None) -
             if len(records) < 100:
                 break
         except Exception as e:
-            if ctx: ctx.error(f"Error fetching table page {page}: {e}")
+            if ctx: ctx.warning(f"Error fetching table page {page}: {e}")
             break
             
     if not all_records:
         if ctx: ctx.info(f"No records found in Table 81.")
         return []
 
-    # 4. Filter and Map
-    simplified_checkins = []
+    # 4. Filter and Map to Pydantic models
+    results: List[CheckinResult] = []
     
     for r in all_records:
         vals = r.get('vals', {})
         
-        # 'f1' is cycle_id
+        # 'f1' is cycle_id - Filter by Cycle ID
         r_cycle_id = str(vals.get('f1', ''))
         
-        # Filter by Cycle ID
         if r_cycle_id == cycle_id:
-            # Map Fields similar to get_records.py
-            # '_name' -> checkin_name
-            # 'f1' -> cycle_id
-            # 'f2' -> next_action_score
-            # 'f4' -> cong_viec_tiep_theo
-            # 'f5' -> checkin_id
-            # 'f7' -> checkin_since
-            # 'f8' -> checkin_target_name
-            # 'f9' -> checkin_kr_current_value
-            # 'f10' -> checkin_user_id
-            # 'f11' -> kr_name
-            
             u_id = str(vals.get('f10', ''))
             user_name = user_map.get(u_id, f"User {u_id}") if u_id else ""
             
-            item = {
-                'checkin_name': r.get('name', ''), # _name
-                'checkin_since': vals.get('f7', ''),
-                'goal_user_name': user_name,
-                'kr_name': vals.get('f11', ''),
-                'cong_viec_tiep_theo': vals.get('f4', ''),
-                'checkin_kr_current_value': vals.get('f9', 0),
-                # Extra fields if needed for debugging or context
-                'checkin_id': vals.get('f5', ''),
-                'next_action_score': vals.get('f2', '')
-            }
-            simplified_checkins.append(item)
+            # Map to Pydantic Model with validation
+            try:
+                item = CheckinResult(
+                    checkin_name=r.get('name', ''),
+                    checkin_since=vals.get('f7', '') or '',
+                    goal_user_name=user_name,
+                    kr_name=vals.get('f11', '') or '',
+                    cong_viec_tiep_theo=vals.get('f4', '') or '',
+                    checkin_kr_current_value=float(vals.get('f9', 0) or 0),
+                    checkin_id=vals.get('f5', ''),
+                    next_action_score=vals.get('f2', '')
+                )
+                results.append(item)
+            except Exception as e:
+                # Skip bad records but continue processing
+                if ctx: ctx.warning(f"Skipped invalid record: {e}")
+                continue
             
-    if ctx: ctx.info(f"Found {len(simplified_checkins)} checkins for cycle {cycle_name}")
-    return simplified_checkins
+    if ctx: ctx.info(f"Found {len(results)} checkins for cycle {cycle_name}")
+    return results
 
 
-def _get_all_checkins_logic(ctx: Optional[Context] = None, cycle: str = None) -> List[Dict]:
-    """Logic for get_all_checkins - switched to Table Source"""
+def _get_all_checkins_logic(ctx: Optional[Context] = None, cycle: str = None) -> List[CheckinResult]:
+    """Logic for get_all_checkins - uses Pydantic models"""
     return _get_checkins_from_table(ctx, cycle)
 
-    # OLD LOGIC DEPRECATED
-    # full_data = _get_full_data_logic(ctx, cycle)
-    # 
-    # # Check for error
-    # if isinstance(full_data, list) and len(full_data) == 1 and "error" in full_data[0]:
-    #     return full_data
-
-    simplified_checkins = []
-    
-    for row in full_data:
-        # Filter: Must have a checkin_id (meaning it's a real check-in row, not just a goal placeholder)
-        if row.get('checkin_id'):
-            simplified_checkins.append({
-                'checkin_name': row.get('checkin_name', ''),
-                'checkin_since': row.get('checkin_since', ''),
-                'goal_user_name': row.get('goal_user_name', ''),
-                'kr_name': row.get('kr_name', ''),
-                'cong_viec_tiep_theo': row.get('cong_viec_tiep_theo', ''),
-                'checkin_kr_current_value': row.get('checkin_kr_current_value', 0)
-            })
-            
-    return simplified_checkins
 
 @mcp.tool(
     name="get_all_checkins",
-    description="Lấy danh sách tất cả check-in của mọi người dùng với các thông tin chi tiết: tên, thời gian, người dùng, KR, công việc tiếp theo, điểm số, điểm next action.",
-    tags={"okr", "checkin", "report"},
-    annotations={"readOnlyHint": True}
+    description="Lấy danh sách chi tiết các check-in OKR của mọi người dùng trong chu kỳ.",
+    annotations={
+        "readOnlyHint": True,
+        "title": "Get All Checkins Report"
+    }
 )
-def get_all_checkins(ctx: Context, cycle: str = None) -> List[Dict]:
+def get_all_checkins(
+    ctx: Context, 
+    cycle: Annotated[str | None, Field(description="Tên chu kỳ OKR (VD: 'Q4 2024', '12/2024'). Nếu để trống sẽ lấy chu kỳ mới nhất.")] = None
+) -> List[CheckinResult]:
     """
-    Get all check-ins with specific fields:
-    - checkin_name
-    - checkin_since
-    - goal_user_name
-    - kr_name
-    - cong_viec_tiep_theo
-    - checkin_kr_current_value
-    - next_action_score
+    Truy xuất dữ liệu check-in từ Base Table.
+    Trả về danh sách các đối tượng CheckinResult có cấu trúc.
+    
+    Returns:
+        List[CheckinResult]: Danh sách structured check-in với các fields:
+        - checkin_name: Tên/tiêu đề check-in
+        - checkin_since: Thời gian check-in
+        - goal_user_name: Tên người thực hiện
+        - kr_name: Tên Key Result
+        - cong_viec_tiep_theo: Công việc tiếp theo
+        - checkin_kr_current_value: Giá trị KR hiện tại
+        - checkin_id: ID check-in
+        - next_action_score: Điểm next action
     """
-    return _get_all_checkins_logic(ctx, cycle)
+    try:
+        return _get_all_checkins_logic(ctx, cycle)
+    except Exception as e:
+        # Convert internal errors to ToolError for clean LLM response
+        raise ToolError(f"Error fetching checkins: {str(e)}")
 
 
-def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dict:
+def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dict[str, Any]:
     """Build hierarchical OKR tree using robust target parsing"""
     try:
         if ctx: ctx.info("Building OKR tree...")
         
         # Resolve cycle
         cycle_path = _resolve_cycle_path(cycle_arg, ctx)
-        if not cycle_path: return {"error": "No OKR cycles found"}
+        if not cycle_path:
+            raise ToolError("No OKR cycles found.")
         
         # 1. Fetch Robust Target List
         targets_df = parse_targets_logic(cycle_path, ctx)
         if targets_df.empty:
-             return {"error": "No targets found"}
+            raise ToolError("No targets found in the selected cycle.")
 
         # 2. Fetch User Goals & KRs
         goals, krs = get_goals_and_krs(cycle_path, ctx)
@@ -908,9 +907,11 @@ def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dic
                 
         return tree
 
+    except ToolError:
+        raise  # Re-raise ToolError as-is
     except Exception as e:
         if ctx: ctx.error(f"Error building tree: {e}")
-        return {"error": str(e)}
+        raise ToolError(f"Error building OKR tree: {str(e)}")
 
 def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
     """Convert API tree format to a generic list of nodes for easier display"""
@@ -1021,23 +1022,32 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
 
 @mcp.tool(
     name="get_okr_tree",
-    description="Lấy cây mục tiêu OKR (Company > Dept/Team > Goal). Hỗ trợ hiển thị tên BP/Team đã map.",
-    tags={"okr", "tree", "visualization"},
-    annotations={"readOnlyHint": True}
+    description="Lấy cây mục tiêu OKR phân cấp (Company -> Dept/Team -> Goal -> KRs).",
+    annotations={
+        "readOnlyHint": True,
+        "title": "Get OKR Hierarchy Tree"
+    }
 )
-def get_okr_tree(ctx: Context, cycle: str = None) -> Dict:
+def get_okr_tree(
+    ctx: Context, 
+    cycle: Annotated[str | None, Field(description="Tên chu kỳ OKR muốn xem cây mục tiêu (VD: 'Q4 2024'). Mặc định là chu kỳ mới nhất.")] = None
+) -> Dict[str, Any]:
     """
-    Get the hierarchical OKR tree visualization structure.
-    Returns a 'visual node' tree: Root -> Company -> Dept/Team -> User Goal -> KRs.
+    Trả về cấu trúc cây visual nodes để hiển thị hoặc phân tích mối quan hệ mục tiêu.
+    Cấu trúc trả về dạng: {label: 'ROOT', children: [...]}
     
-    Args:
-        cycle (str, optional): Name of the cycle to fetch (e.g. "Q4 2024"). Defaults to current/latest.
+    Returns:
+        Dict[str, Any]: Cây OKR với cấu trúc:
+        - label: Nhãn hiển thị
+        - children: Danh sách các node con
     """
-    raw_tree = _get_tree_logic(ctx, cycle)
-    if "error" in raw_tree: return raw_tree
-    
-
-    return _convert_to_visual_nodes(raw_tree)
+    try:
+        raw_tree = _get_tree_logic(ctx, cycle)
+        return _convert_to_visual_nodes(raw_tree)
+    except ToolError:
+        raise  # Re-raise ToolError
+    except Exception as e:
+        raise ToolError(f"Error fetching OKR tree: {str(e)}")
 
 
 
