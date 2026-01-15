@@ -920,10 +920,7 @@ def _get_all_checkins_logic(ctx: Optional[Context] = None, cycle: str = None) ->
 @mcp.tool(
     name="get_all_checkins",
     description="Dùng tool này để lấy báo cáo chi tiết check-in của toàn bộ công ty/chu kỳ. Thường dùng khi cần xuất dữ liệu raw hoặc thống kê diện rộng.",
-    annotations={
-        "readOnlyHint": True,
-        "title": "Get All Checkins Report"
-    }
+    annotations={"readOnlyHint": True}
 )
 def get_all_checkins(
     ctx: Context, 
@@ -1032,10 +1029,7 @@ def find_user_by_name(name_query: str, user_list: List[Dict], ctx: Optional[Cont
 @mcp.tool(
     name="review_user_work_plus",
     description="Dùng tool này khi cần tổng hợp hiệu suất (performance review), xem công việc WeWork và tiến độ OKR của một nhân sự.",
-    annotations={
-        "readOnlyHint": True,
-        "title": "Review User Work Plus"
-    }
+    annotations={"readOnlyHint": True}
 )
 def review_user_work_plus(
     ctx: Context,
@@ -1488,14 +1482,10 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
             root_children.append(p_node)
         
     return {'label': 'ROOT', 'children': root_children}
-
 @mcp.tool(
     name="get_okr_tree",
     description="Dùng tool này để hiển thị cấu trúc cây OKR (Goals & KRs) cho toàn bộ chu kỳ. Hữu ích khi cần cái nhìn tổng quan (overview).",
-    annotations={
-        "readOnlyHint": True,
-        "title": "Get OKR Hierarchy Tree"
-    }
+    annotations={"readOnlyHint": True}
 )
 def get_okr_tree(
     ctx: Context, 
