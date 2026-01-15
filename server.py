@@ -1147,13 +1147,19 @@ def review_user_work_plus(
                     if datetime.fromtimestamp(last_update_ts) < threshold_date: continue
                     
                     # Filter by Owner/Creator
-                    # "wework chỉ tập trung vào các task dc giao bản thân... hoặc creator là ng khác nhưng username lại là username của mình"
-                    # Logic: Include if (creator_username == target_username) OR (username == target_username)
+                    # Logic: 
+                    # 1. Assigned to target (username == target)
+                    # 2. Created by target AND assigned to no one (creator == target and username is empty)
                     t_creator = t.get('creator_username', '')
                     t_assignee = t.get('username', '')
                     
-                    if target_username and (t_creator != target_username and t_assignee != target_username):
-                         continue
+                    # If target_username is found, apply strict filter
+                    if target_username:
+                        is_assigned_to_me = (t_assignee == target_username)
+                        is_self_created_no_assignee = (t_creator == target_username and not t_assignee)
+                        
+                        if not (is_assigned_to_me or is_self_created_no_assignee):
+                            continue
                     
                     # Formatting... reusing helpers defined inside the tool or globally?
                     # Let's define small helpers here or assume imported
