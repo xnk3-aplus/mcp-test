@@ -204,21 +204,21 @@ def get_user_names() -> List[Dict[str, str]]:
     Get user list from Account API (Filtered by 'nvvanphong' group).
     Returns list of dicts: {'id': str, 'name': str, 'username': str}
     """
-    url = "https://account.base.vn/extapi/v1/group/get"
-    # Using Account Token and path 'nvvanphong' as per WeWork logic
-    data = {**get_auth_data('account'), "path": "nvvanphong"}
+    url = "https://account.base.vn/extapi/v1/users"
+    # Using Account Token - No path needed for users endpoint
+    data = get_auth_data('account')
     
     try:
-        response = _make_request(url, data, "fetching users (group nvvanphong)")
+        response = _make_request(url, data, "fetching users (all)")
         res_json = response.json()
-        members = res_json.get('group', {}).get('members', [])
+        users_list = res_json.get('users', [])
         
         users = []
-        for m in members:
+        for u in users_list:
              users.append({
-                 'id': str(m.get('id', '')),
-                 'name': m.get('name', ''),
-                 'username': m.get('username', '')
+                 'id': str(u.get('id', '')),
+                 'name': u.get('name', ''),
+                 'username': u.get('username', '')
              })
         return users
     except Exception as e:
@@ -242,20 +242,20 @@ def get_user_recent_tasks_logic(username: str) -> Dict[str, Any]:
     user_map = {}
     
     try:
-        url_account = "https://account.base.vn/extapi/v1/group/get"
-        # Using Account Token
-        data_acc = {**get_auth_data('account'), "path": "nvvanphong"}
+        url_account = "https://account.base.vn/extapi/v1/users"
+        # Using Account Token - No path needed for users endpoint
+        data_acc = get_auth_data('account')
         
         r = requests.post(url_account, data=data_acc, timeout=30)
         
         if r.status_code == 200:
             res_json = r.json()
-            members = res_json.get('group', {}).get('members', [])
+            users_list = res_json.get('users', [])
             
             # Find target user and build map
-            for m in members:
-                uid = str(m.get('id', ''))
-                uname = m.get('username', '')
+            for u in users_list:
+                uid = str(u.get('id', ''))
+                uname = u.get('username', '')
                 user_map[uid] = uname
                 if uname == username:
                     user_id = uid
@@ -1181,13 +1181,17 @@ def review_user_work_plus(
             if ctx: ctx.error(f"Error fetching WeWork tasks: {e}")
 
         # 5. Assemble Final Result
-        return {
+        final_result = {
             "name": target_user_real_name,
             "number_task_30days": wework_result["count"],
             "number_krs": count_unique_krs,
-            "wework": wework_result,
-            "goal": okr_data
+            "wework": wework_result
         }
+        
+        if okr_data:
+            final_result["goal"] = okr_data
+            
+        return final_result
 
     except ToolError:
         raise
