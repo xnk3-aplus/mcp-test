@@ -355,7 +355,7 @@ def get_user_recent_tasks_logic(username: str) -> Dict[str, Any]:
             'last_update': fmt_datetime(t.get('last_update')),
             'result': clean_html(res_content),
             'description': clean_html(t.get('content', '')),
-            'url': f"https://wework.base.vn/task?id={t.get('id')}"
+            'url': f"https://wework.base.vn/home?task={t.get('id')}"
         }
         result_tasks.append(item)
         
@@ -1171,7 +1171,7 @@ def review_user_work_plus(
                         'last_update': _fmt_ts(t.get('last_update'), '%d/%m/%Y %H:%M'),
                         'result': _clean(res_content),
                         'description': _clean(t.get('content', '')),
-                        'url': f"https://wework.base.vn/task?id={t.get('id')}"
+                        'url': f"https://wework.base.vn/home?task={t.get('id')}"
                     }
                     c_id = str(t.get('creator_id', ''))
                     item['creator'] = "Unknown"
