@@ -785,8 +785,8 @@ def checkin_kr(
     username: Annotated[str, Field(description="Tên đăng nhập (username) của người check-in (VD: 'sontran').")],
     kr_id: Annotated[str, Field(description="ID của Key Result cần check-in.")],
     value: Annotated[str, Field(description="Giá trị đạt được (0-100).")],
-    done_work_text: Annotated[str, Field(description="Nội dung công việc đã hoàn thành (Mục 'Đã hoàn thành việc gì?').")],
-    next_plan_text: Annotated[str, Field(description="Kế hoạch công việc tiếp theo (Mục 'Công việc quan trọng tuần tới').")],
+    done_work_text: Annotated[str, Field(description="Nội dung công việc đã hoàn thành (Viết 1-2 câu ngắn gọn).")],
+    next_plan_text: Annotated[str, Field(description="Kế hoạch công việc tiếp theo (Viết 1-2 câu ngắn gọn).")],
     confidence: Annotated[str, Field(description="Độ tự tin (low, average, high, sure). ")] = "sure"
 ) -> Dict[str, Any]:
     """
@@ -1077,23 +1077,9 @@ def review_user_work_plus(
             full_data = _get_full_data_logic(ctx, cycle)
             for item in full_data:
                 if "error" in item: continue
-                if str(item.get('goal_user_id', '')) == str(target_user_id):
-                    # Simplified conversion or keep full dict? User request implies "results từ hàm review_user_okr cũ"
-                    # We will return the CheckinResult structure but as dict for JSON serialization
-                    try:
-                        res = CheckinResult(
-                            checkin_name=item.get('checkin_name', ''),
-                            checkin_since=item.get('checkin_since', ''),
-                            goal_user_name=item.get('goal_user_name', ''),
-                            kr_name=item.get('kr_name', ''),
-                            cong_viec_tiep_theo=item.get('cong_viec_tiep_theo', ''),
-                            checkin_kr_current_value=float(item.get('checkin_kr_current_value', 0) or 0),
-                            checkin_id=item.get('checkin_id', ''),
-                            next_action_score=item.get('next_action_score', None),
-                            checkin_user_id=item.get('goal_user_id', '')
-                        )
-                        okr_data.append(res.model_dump())
-                    except: continue
+                if str(item.get('goal_user_id', '')) == str(target_user_id) or str(item.get('checkin_user_id', '')) == str(target_user_id):
+                    # Return full data structure as requested
+                    okr_data.append(item)
         except Exception as e:
             if ctx: ctx.error(f"Error fetching OKRs: {e}")
 

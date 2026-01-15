@@ -92,7 +92,7 @@ ngrok http 8000
 | Tool | Description | Tags | Auto-Run |
 |------|-------------|------|----------|
 | `get_all_checkins` | Lấy danh sách check-in chi tiết (Tên, Ngày, User, KR, Next Action, Value). | `okr`, `checkin`, `report` | ✅ Yes |
-| `checkin_kr` | Tạo check-in mới cho Key Result. Inputs: username, kr_id, value, done_work_text, next_plan_text, confidence. Date tự động lấy ngày hiện tại. | `okr`, `write`, `checkin` | ❌ No |
+| `checkin_kr` | Tạo check-in mới cho Key Result. Inputs: username, kr_id, value, done_work_text (1-2 câu), next_plan_text (1-2 câu), confidence. Date tự động lấy ngày hiện tại. | `okr`, `write`, `checkin` | ❌ No |
 | `get_okr_tree` | Lấy cây mục tiêu OKR. **Param:** `cycle` (optional) - Tên chu kỳ hoặc thời gian (e.g. "2024-11"). Default: Current. | `okr`, `tree`, `visualization` | ✅ Yes |
 | `review_user_work_plus` | Tổng hợp công việc WeWork (30 ngày) và OKR Check-ins của một người dùng. Hỗ trợ tìm theo Username hoặc Real Name. | `user`, `wework`, `okr` | ✅ Yes |
 
