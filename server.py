@@ -1,6 +1,6 @@
 from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
-from typing import Dict, List, Optional, Annotated, Any
+from typing import Dict, List, Optional, Annotated, Any, Literal
 from pydantic import BaseModel, Field
 import os
 import requests
@@ -775,7 +775,7 @@ def _get_full_data_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -
 
 @mcp.tool(
     name="checkin_kr",
-    description="Tạo check-in mới cho Key Result (KR). Lưu ý: Tool này tạo dữ liệu thật.",
+    description="Sử dụng tool này *CHỈ KHI* người dùng yêu cầu tạo check-in cho một Key Result cụ thể. KHÔNG dùng để xem hay báo cáo.",
     annotations={
         "title": "Check-in Key Result"
     }
@@ -784,10 +784,10 @@ def checkin_kr(
     ctx: Context,
     username: Annotated[str, Field(description="Tên đăng nhập (username) của người check-in (VD: 'sontran').")],
     kr_id: Annotated[str, Field(description="ID của Key Result cần check-in.")],
-    value: Annotated[str, Field(description="Giá trị đạt được (0-100).")],
+    value: Annotated[float, Field(description="Giá trị đạt được (Number 0-100).", ge=0, le=100)],
     done_work_text: Annotated[str, Field(description="Nội dung công việc đã hoàn thành (Viết 1-2 câu ngắn gọn).")],
     next_plan_text: Annotated[str, Field(description="Kế hoạch công việc tiếp theo (Viết 1-2 câu ngắn gọn).")],
-    confidence: Annotated[str, Field(description="Độ tự tin (low, average, high, sure). ")] = "sure"
+    confidence: Annotated[Literal["low", "average", "high", "sure"], Field(description="Độ tự tin (low, average, high, sure). ")] = "sure"
 ) -> Dict[str, Any]:
     """
     Thực hiện Check-in cho một Key Result cụ thể.
@@ -919,7 +919,7 @@ def _get_all_checkins_logic(ctx: Optional[Context] = None, cycle: str = None) ->
 
 @mcp.tool(
     name="get_all_checkins",
-    description="Lấy danh sách chi tiết các check-in OKR của mọi người dùng trong chu kỳ.",
+    description="Dùng tool này để lấy báo cáo chi tiết check-in của toàn bộ công ty/chu kỳ. Thường dùng khi cần xuất dữ liệu raw hoặc thống kê diện rộng.",
     annotations={
         "readOnlyHint": True,
         "title": "Get All Checkins Report"
@@ -1031,7 +1031,7 @@ def find_user_by_name(name_query: str, user_list: List[Dict], ctx: Optional[Cont
 
 @mcp.tool(
     name="review_user_work_plus",
-    description="Xem lại toàn bộ công việc (WeWork Tasks) và OKR (check-in) của một người dùng trong 30 ngày qua và chu kỳ hiện tại.",
+    description="Dùng tool này khi cần tổng hợp hiệu suất (performance review), xem công việc WeWork và tiến độ OKR của một nhân sự.",
     annotations={
         "readOnlyHint": True,
         "title": "Review User Work Plus"
@@ -1491,7 +1491,7 @@ def _convert_to_visual_nodes(tree_data: Dict) -> Dict:
 
 @mcp.tool(
     name="get_okr_tree",
-    description="Lấy cây mục tiêu OKR phân cấp (Company -> Dept/Team -> Goal -> KRs).",
+    description="Dùng tool này để hiển thị cấu trúc cây OKR (Goals & KRs) cho toàn bộ chu kỳ. Hữu ích khi cần cái nhìn tổng quan (overview).",
     annotations={
         "readOnlyHint": True,
         "title": "Get OKR Hierarchy Tree"
