@@ -7,6 +7,9 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 import pytz
+import pytz
+from collections import Counter
+import math
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -84,6 +87,7 @@ class CheckinResult(BaseModel):
     checkin_kr_current_value: float = Field(description="Giá trị KR tại thời điểm check-in")
     checkin_id: Optional[str] = Field(None, description="ID định danh check-in")
     next_action_score: Optional[str] = Field(None, description="Điểm đánh giá hành động tiếp theo")
+    checkin_user_id: Optional[str] = Field(None, description="ID người dùng Base")
 
 # --- SERVER INITIALIZATION ---
 mcp = FastMCP("OKR Analysis Server")
@@ -682,7 +686,8 @@ def _get_checkins_from_table(ctx: Optional[Context] = None, cycle: str = None) -
                     cong_viec_tiep_theo=vals.get('f4', '') or '',
                     checkin_kr_current_value=float(vals.get('f9', 0) or 0),
                     checkin_id=vals.get('f5', ''),
-                    next_action_score=vals.get('f2', '')
+                    next_action_score=vals.get('f2', ''),
+                    checkin_user_id=u_id
                 )
                 results.append(item)
             except Exception as e:
@@ -731,6 +736,156 @@ def get_all_checkins(
     except Exception as e:
         # Convert internal errors to ToolError for clean LLM response
         raise ToolError(f"Error fetching checkins: {str(e)}")
+
+
+def get_cosine_similarity(str1: str, str2: str) -> float:
+    """
+    Calculate cosine similarity between two strings using character bigrams.
+    Case-insensitive.
+    """
+    if not str1 or not str2:
+        return 0.0
+    
+    s1 = str1.lower()
+    s2 = str2.lower()
+    
+    # Use character bigrams for better fuzzy matching on names
+    # e.g. "son" -> "so", "on"
+    def get_grams(text, n=2):
+        return [text[i:i+n] for i in range(len(text)-n+1)]
+
+    # If strings are very short, use unigrams (chars)
+    n = 2 if len(s1) > 2 and len(s2) > 2 else 1
+    
+    vec1 = Counter(get_grams(s1, n))
+    vec2 = Counter(get_grams(s2, n))
+    
+    intersection = set(vec1.keys()) & set(vec2.keys())
+    numerator = sum([vec1[x] * vec2[x] for x in intersection])
+    
+    sum1 = sum([vec1[x]**2 for x in vec1.keys()])
+    sum2 = sum([vec2[x]**2 for x in vec2.keys()])
+    denominator = math.sqrt(sum1) * math.sqrt(sum2)
+    
+    if not denominator:
+        return 0.0
+    else:
+        return float(numerator) / denominator
+
+
+def find_user_by_name(name_query: str, user_map: Dict[str, str], ctx: Optional[Context] = None) -> Optional[tuple[str, str]]:
+    """
+    Find user ID and Name by fuzzy matching the query against real names.
+    Returns (user_id, user_name) or None.
+    """
+    if not name_query or not user_map:
+        return None
+        
+    normalized_query = name_query.lower().strip()
+    
+    # 1. Exact match (case insensitive)
+    for uid, uname in user_map.items():
+        if uname.lower().strip() == normalized_query:
+            if ctx: ctx.info(f"Exact user match found: {uname}")
+            return uid, uname
+            
+    # 2. Fuzzy match using Cosine Similarity
+    best_match = None
+    highest_score = 0.0
+    
+    for uid, uname in user_map.items():
+        score = get_cosine_similarity(normalized_query, uname)
+        if score > highest_score:
+            highest_score = score
+            best_match = (uid, uname)
+            
+    # Threshold for fuzzy match
+    SIMILARITY_THRESHOLD = 0.3  # Adjusted for short names
+    
+    if best_match and highest_score >= SIMILARITY_THRESHOLD:
+        if ctx: ctx.info(f"Fuzzy match found: '{name_query}' -> '{best_match[1]}' (score: {highest_score:.2f})")
+        return best_match
+        
+    if ctx: ctx.info(f"No user found matching '{name_query}' (best score: {highest_score:.2f})")
+    return None
+
+
+@mcp.tool(
+    name="review_user_okr",
+    description="Xem lại OKR và check-in của một người dùng cụ thể. Hỗ trợ tìm kiếm theo tên gần đúng.",
+    annotations={
+        "readOnlyHint": True,
+        "title": "Review User OKR"
+    }
+)
+def review_user_okr(
+    ctx: Context,
+    user_name: Annotated[str, Field(description="Tên người dùng cần xem (Dùng tên thật, ví dụ: 'Nguyễn Văn A')")],
+    cycle: Annotated[str | None, Field(description="Tên chu kỳ OKR (VD: 'Q4 2024'). Nếu để trống lấy chu kỳ mới nhất.")] = None
+) -> List[CheckinResult]:
+    """
+    Tìm người dùng theo tên (hỗ trợ tìm kiếm gần đúng) và trả về danh sách check-in của họ trong chu kỳ.
+    
+    Returns:
+        List[CheckinResult]: Danh sách check-in của người dùng đó.
+    """
+    try:
+        # 1. Get User Map
+        user_map = get_user_names()
+        if not user_map:
+             raise ToolError("Failed to fetch user list.")
+
+        # 2. Find User
+        user_info = find_user_by_name(user_name, user_map, ctx)
+        if not user_info:
+            # Try to list some suggestions? For now just error.
+            raise ToolError(f"Không tìm thấy người dùng nào phù hợp với tên '{user_name}'. Vui lòng thử lại với tên chính xác hơn.")
+            
+        target_user_id, target_user_real_name = user_info
+        ctx.info(f"Reviewing OKRs for: {target_user_real_name} (ID: {target_user_id})")
+
+        # 3. Get Full Data (Goal API)
+        # This returns a list of dictionaries
+        full_data = _get_full_data_logic(ctx, cycle)
+        
+        # 4. Filter by User ID and Map to CheckinResult
+        results = []
+        for item in full_data:
+            # Check for error dict
+            if "error" in item:
+                continue
+                
+            # Filter by goal_user_id
+            if str(item.get('goal_user_id', '')) == str(target_user_id):
+                try:
+                    # Map dict to CheckinResult
+                    # Note: next_action_score might be missing in API data compared to Table 81
+                    res = CheckinResult(
+                        checkin_name=item.get('checkin_name', ''),
+                        checkin_since=item.get('checkin_since', ''),
+                        goal_user_name=item.get('goal_user_name', ''),
+                        kr_name=item.get('kr_name', ''),
+                        cong_viec_tiep_theo=item.get('cong_viec_tiep_theo', ''),
+                        checkin_kr_current_value=float(item.get('checkin_kr_current_value', 0) or 0),
+                        checkin_id=item.get('checkin_id', ''),
+                        next_action_score=item.get('next_action_score', None), # Might be None
+                        checkin_user_id=item.get('goal_user_id', '')
+                    )
+                    results.append(res)
+                except Exception as e:
+                    if ctx: ctx.warning(f"Skipping invalid item for user {target_user_real_name}: {e}")
+                    continue
+        
+        if not results:
+             ctx.info(f"User {target_user_real_name} has no OKR data in this cycle.")
+             return []
+             
+        return results
+
+    except ToolError:
+        raise
+    except Exception as e:
+        raise ToolError(f"Error reviewing user OKR: {str(e)}")
 
 
 def _get_tree_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -> Dict[str, Any]:
