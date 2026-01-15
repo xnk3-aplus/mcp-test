@@ -1,15 +1,19 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
+*py
 *.so
+*.gs
 .env
 venv/
 .venv/
 env/
+!server.py
 
 # Data
-goal_data.csv
+*.csv
+*.json
+*.txt
 
 # IDEs
 .vscode/

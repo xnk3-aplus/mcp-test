@@ -773,6 +773,56 @@ def _get_full_data_logic(ctx: Optional[Context] = None, cycle_arg: str = None) -
         return [{"error": str(e)}]
 
 
+@mcp.tool(
+    name="checkin_kr",
+    description="Tạo check-in mới cho Key Result (KR). Lưu ý: Tool này tạo dữ liệu thật.",
+    annotations={
+        "title": "Check-in Key Result"
+    }
+)
+def checkin_kr(
+    ctx: Context,
+    username: Annotated[str, Field(description="Tên đăng nhập (username) của người check-in (VD: 'sontran').")],
+    kr_id: Annotated[str, Field(description="ID của Key Result cần check-in.")],
+    value: Annotated[str, Field(description="Giá trị đạt được (0-100).")],
+    done_work_text: Annotated[str, Field(description="Nội dung công việc đã hoàn thành (Mục 'Đã hoàn thành việc gì?').")],
+    next_plan_text: Annotated[str, Field(description="Kế hoạch công việc tiếp theo (Mục 'Công việc quan trọng tuần tới').")],
+    confidence: Annotated[str, Field(description="Độ tự tin (low, average, high, sure). ")] = "sure"
+) -> Dict[str, Any]:
+    """
+    Thực hiện Check-in cho một Key Result cụ thể.
+    """
+    try:
+        checkin_date = datetime.now().strftime('%d/%m/%Y')
+            
+        url = "https://goal.base.vn/extapi/v1/checkin/kr"
+        payload = {
+            "access_token_v2": GOAL_ACCESS_TOKEN,
+            "username": username,
+            "id": kr_id,
+            "date": checkin_date,
+            "value": value,
+            "name": done_work_text,
+            "confidence": confidence,
+            "custom_nhung_cong_viec_quan_trong_trong": next_plan_text
+        }
+        
+        if ctx: ctx.info(f"Check-in KR {kr_id} for user {username} on {checkin_date}...")
+        
+        # Using requests directly as this is a specific write operation
+        response = requests.post(url, data=payload)
+        
+        try:
+            res_json = response.json()
+            return res_json
+        except:
+            return {"error": "Failed to parse response", "text": response.text}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+
 
 
 
