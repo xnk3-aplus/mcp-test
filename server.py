@@ -983,10 +983,10 @@ def get_cosine_similarity(str1: str, str2: str) -> float:
         return float(numerator) / denominator
 
 
-def find_user_by_name(name_query: str, user_list: List[Dict], ctx: Optional[Context] = None) -> Optional[tuple[str, str]]:
+def find_user_by_name(name_query: str, user_list: List[Dict], ctx: Optional[Context] = None) -> Optional[tuple[str, str, str]]:
     """
-    Find user ID and Name by matching query against username (exact) or real name (fuzzy).
-    Returns (user_id, user_real_name) or None.
+    Find user ID, Name, and Username by matching query against username (exact) or real name (fuzzy).
+    Returns (user_id, user_real_name, user_username) or None.
     """
     if not name_query or not user_list:
         return None
@@ -997,13 +997,13 @@ def find_user_by_name(name_query: str, user_list: List[Dict], ctx: Optional[Cont
     for u in user_list:
         if u['username'].lower().strip() == normalized_query:
             if ctx: ctx.info(f"Exact username match found: {u['username']} ({u['name']})")
-            return u['id'], u['name']
+            return u['id'], u['name'], u['username']
 
     # 2. Exact Real Name Match (Priority 2)
     for u in user_list:
         if u['name'].lower().strip() == normalized_query:
             if ctx: ctx.info(f"Exact name match found: {u['name']}")
-            return u['id'], u['name']
+            return u['id'], u['name'], u['username']
             
     # 3. Fuzzy match using Cosine Similarity on Real Name (Priority 3)
     best_match = None
@@ -1016,7 +1016,7 @@ def find_user_by_name(name_query: str, user_list: List[Dict], ctx: Optional[Cont
         score = get_cosine_similarity(normalized_query, u['name'])
         if score > highest_score:
             highest_score = score
-            best_match = (u['id'], u['name'])
+            best_match = (u['id'], u['name'], u['username'])
     
     if best_match and highest_score >= SIMILARITY_THRESHOLD:
         if ctx: ctx.info(f"Fuzzy match found: '{name_query}' -> '{best_match[1]}' (score: {highest_score:.2f})")
@@ -1060,9 +1060,10 @@ def review_user_work_plus(
         
         user_info = find_user_by_name(user_name, user_map, ctx)
         if not user_info:
+            if ctx: ctx.warning(f"User '{user_name}' not found.")
             raise ToolError(f"Không tìm thấy người dùng nào phù hợp với tên '{user_name}'. Vui lòng thử lại với tên chính xác hơn.")
             
-        target_user_id, target_user_real_name = user_info
+        target_user_id, target_user_real_name, target_user_username = user_info
         ctx.info(f"Reviewing Work & OKRs for: {target_user_real_name} (ID: {target_user_id})")
 
         # 3. Get OKR Data
@@ -1134,9 +1135,24 @@ def review_user_work_plus(
                 threshold_date = datetime.now() - timedelta(days=30)
                 
                 for t in all_tasks:
+                    # 1. Filter by Date
                     last_update_ts = int(t.get('last_update', 0))
                     if last_update_ts == 0: last_update_ts = int(t.get('since', 0))
                     if datetime.fromtimestamp(last_update_ts) < threshold_date: continue
+
+                    # 2. Filter by Ownership (User Request)
+                    # "creator_username" == target OR (assignee == target/empty AND creator == target)
+                    # Simplified: Creator MUST be Target. Assignee MUST be Target or Empty.
+                    
+                    creator_u = t.get('creator_username', '')
+                    assignee_u = t.get('username', '')
+                    
+                    is_creator = (creator_u == target_user_username)
+                    is_assignee_valid = (assignee_u == target_user_username) or (not assignee_u)
+                    
+                    if not (is_creator and is_assignee_valid):
+                        # Skip if not owning/self-assigned task
+                        continue
                     
                     # Formatting... reusing helpers defined inside the tool or globally?
                     # Let's define small helpers here or assume imported
@@ -1157,7 +1173,7 @@ def review_user_work_plus(
                         'id': t.get('id'),
                         'name': t.get('name'),
                         'project': proj_map.get(project_id, "Chưa phân loại"),
-                        'creator': "Unknown", # We skipped fetching creator name map for speed, or can user_map map ID->Name? Yes user_map is ID->Name
+                        'creator': target_user_real_name, # Validated as creator
                         'status': 'Pending' if float(t.get('complete', 0)) == 0 else ('Done' if float(t.get('complete', 0)) == 100 else 'Doing'),
                         'created_at': _fmt_ts(t.get('since'), '%d/%m/%Y'),
                         'deadline': _fmt_ts(t.get('deadline'), '%d/%m/%Y'),
@@ -1168,11 +1184,8 @@ def review_user_work_plus(
                         'url': f"https://wework.base.vn/home?task={t.get('id')}"
                     }
                     c_id = str(t.get('creator_id', ''))
-                    item['creator'] = "Unknown"
-                    for u in user_map:
-                         if str(u['id']) == c_id:
-                             item['creator'] = u['name']
-                             break
+                    # Creator is definitively the target user now
+                    item['creator'] = target_user_real_name
                     
                     wework_result["tasks"].append(item)
                 wework_result["count"] = len(wework_result["tasks"])
