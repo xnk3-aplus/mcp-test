@@ -1147,18 +1147,21 @@ def review_user_work_plus(
                     if datetime.fromtimestamp(last_update_ts) < threshold_date: continue
                     
                     # Filter by Owner/Creator
-                    # Logic: 
-                    # 1. Assigned to target (username == target)
-                    # 2. Created by target AND assigned to no one (creator == target and username is empty)
+                    # Logic (Strict): 
+                    # 1. Creator MUST be target_username
+                    # 2. AND (Assignee == target_username OR Assignee is empty)
                     t_creator = t.get('creator_username', '')
                     t_assignee = t.get('username', '')
                     
                     # If target_username is found, apply strict filter
                     if target_username:
-                        is_assigned_to_me = (t_assignee == target_username)
-                        is_self_created_no_assignee = (t_creator == target_username and not t_assignee)
-                        
-                        if not (is_assigned_to_me or is_self_created_no_assignee):
+                        # Condition 1: Must be created by target
+                        if t_creator != target_username:
+                            continue
+                            
+                        # Condition 2: Must be assigned to self OR unassigned
+                        # (implicitly excludes assigned to others)
+                        if t_assignee and t_assignee != target_username:
                             continue
                     
                     # Formatting... reusing helpers defined inside the tool or globally?
