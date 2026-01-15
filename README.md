@@ -34,6 +34,7 @@ A powerful Model Context Protocol (MCP) server for analyzing OKR (Objectives and
    GOAL_ACCESS_TOKEN=your_goal_token_here
    ACCOUNT_ACCESS_TOKEN=your_account_token_here
    TABLE_ACCESS_TOKEN=your_table_token_here
+   WEWORK_ACCESS_TOKEN=your_wework_token_here
    ```
 
 ## 🚀 Deployment Options
@@ -92,6 +93,7 @@ ngrok http 8000
 |------|-------------|------|----------|
 | `get_all_checkins` | Lấy danh sách check-in chi tiết (Tên, Ngày, User, KR, Next Action, Value). | `okr`, `checkin`, `report` | ✅ Yes |
 | `get_okr_tree` | Lấy cây mục tiêu OKR. **Param:** `cycle` (optional) - Tên chu kỳ hoặc thời gian (e.g. "2024-11"). Default: Current. | `okr`, `tree`, `visualization` | ✅ Yes |
+| `review_user_work_plus` | Tổng hợp công việc WeWork (30 ngày) và OKR Check-ins của một người dùng. Hỗ trợ tìm theo Username hoặc Real Name. | `user`, `wework`, `okr` | ✅ Yes |
 
 ## 📄 License
 MIT License
