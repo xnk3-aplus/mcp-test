@@ -5,3 +5,6 @@ pandas
 requests
 python-dotenv
 pytz
+sentence-transformers
+numpy
+openpyxl

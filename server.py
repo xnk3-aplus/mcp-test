@@ -1,5 +1,6 @@
 from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
+from fastmcp.utilities.types import File
 from typing import Dict, List, Optional, Annotated, Any, Literal
 from pydantic import BaseModel, Field
 import os
@@ -1537,6 +1538,28 @@ def get_okr_tree(
         raise  # Re-raise ToolError
     except Exception as e:
         raise ToolError(f"Error fetching OKR tree: {str(e)}")
+
+@mcp.tool(name="generate_okr_analysis_report", description="Generate OKR Analysis Report for the current cycle as an Excel file.")
+def generate_okr_analysis_report(ctx: Context) -> File:
+    """
+    Generate OKR Analysis Report for the current cycle as an Excel file.
+    Returns:
+        File: The generated Excel file.
+    """
+    try:
+        from okr_report_service import OKRReportService
+        from fastmcp.utilities.types import File
+        
+        ctx.info("Starting OKR Report Generation...")
+        service = OKRReportService()
+        file_path = service.generate_report()
+        
+        ctx.info(f"Report generated at: {file_path}")
+        return File(path=file_path)
+    except Exception as e:
+        ctx.error(f"Error generating report: {e}")
+        raise ToolError(f"Failed to generate report: {e}")
+
 
 
 

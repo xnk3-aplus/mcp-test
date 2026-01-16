@@ -9,6 +9,10 @@ venv/
 .venv/
 env/
 !server.py
+!excel_generator.py
+!table_client.py
+!okr_report_service.py
+
 
 # Data
 *.csv
