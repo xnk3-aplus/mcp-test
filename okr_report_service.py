@@ -559,7 +559,7 @@ class OKRReportService:
         self.api_client = GoalAPIClient(self.goal_token, self.account_token)
         self.okr_calculator = OKRCalculator() 
 
-    def generate_report(self) -> str:
+    def generate_report(self) -> bytes:
         cycles = self.api_client.get_cycle_list()
         if not cycles: raise Exception("No OKR cycles found")
         
@@ -588,7 +588,7 @@ class OKRReportService:
         checkin_df = self._extract_checkin_data(all_checkins, table_scores_map)
         
         # Merge Data
-        if goals_df.empty or krs_df.empty: return ""
+        if goals_df.empty or krs_df.empty: return b""
         
         merged_df = pd.merge(goals_df, krs_df, on='goal_id', how='left', suffixes=('_goal', '_kr'))
         if 'kr_id' not in merged_df.columns: merged_df['kr_id'] = None
@@ -647,12 +647,7 @@ class OKRReportService:
         generator = OKRSheetGenerator()
         excel_buffer = generator.generate_excel(users_data, cycle_name)
         
-        # Save to file
-        output_filename = "OKR_Analysis_Report.xlsx"
-        with open(output_filename, "wb") as f:
-            f.write(excel_buffer.getbuffer())
-            
-        return os.path.abspath(output_filename)
+        return excel_buffer.getvalue()
 
     def _extract_checkin_data(self, all_checkins, scores_map):
          # Simplified version of DataProcessor.extract_checkin_data

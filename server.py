@@ -1552,10 +1552,10 @@ def generate_okr_analysis_report(ctx: Context) -> File:
         
         ctx.info("Starting OKR Report Generation...")
         service = OKRReportService()
-        file_path = service.generate_report()
+        report_bytes = service.generate_report()
         
-        ctx.info(f"Report generated at: {file_path}")
-        return File(path=file_path)
+        ctx.info("Report generated successfully.")
+        return File(data=report_bytes, name="OKR_Analysis_Report.xlsx", format="xlsx")
     except Exception as e:
         ctx.error(f"Error generating report: {e}")
         raise ToolError(f"Failed to generate report: {e}")
